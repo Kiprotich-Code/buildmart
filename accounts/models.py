@@ -97,10 +97,11 @@ class Seller(models.Model):
         return self.verification_status == 'verified'
 
 
-# Signal to create Profile when user is created
+# Signal to create Profile only for regular users and admins
 @receiver(post_save, sender=CustomUser)
 def create_user_profile(sender, instance, created, **kwargs):
-    if created:
+    if created and instance.role != 'seller':
+        # Only create Profile for users and admins, not for sellers
         Profile.objects.create(
             user=instance,
             full_name=f"{instance.first_name} {instance.last_name}".strip() or instance.email

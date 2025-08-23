@@ -69,21 +69,6 @@ class LoginSerializer(serializers.Serializer):
             raise serializers.ValidationError('Must include both email and password.')
 
 
-class UserSerializer(serializers.ModelSerializer):
-    profile = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = User
-        fields = ['id', 'email', 'first_name', 'last_name', 'role', 'is_email_verified', 
-                 'date_joined', 'last_login', 'profile']
-        read_only_fields = ['id', 'date_joined', 'last_login']
-    
-    def get_profile(self, obj):
-        if hasattr(obj, 'profile'):
-            return ProfileSerializer(obj.profile).data
-        return None
-
-
 class ProfileSerializer(serializers.ModelSerializer):
     user_email = serializers.EmailField(source='user.email', read_only=True)
     user_role = serializers.CharField(source='user.role', read_only=True)
@@ -97,19 +82,36 @@ class ProfileSerializer(serializers.ModelSerializer):
 
 class SellerSerializer(serializers.ModelSerializer):
     user_email = serializers.EmailField(source='user.email', read_only=True)
-    user_profile = serializers.SerializerMethodField()
 
     class Meta:
         model = Seller
-        fields = ['id', 'user_email', 'user_profile', 'shop_name', 'shop_description', 
+        fields = ['id', 'user_email', 'shop_name', 'shop_description', 
                  'business_license', 'tax_id', 'state', 'city', 'address', 
                  'union_membership_number', 'verification_status', 'trial_end_date', 
                  'subscription_active', 'subscription_end_date', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at', 'user_email', 'verification_status']
+
+
+class UserSerializer(serializers.ModelSerializer):
+    profile = serializers.SerializerMethodField()
+    seller_profile = serializers.SerializerMethodField()
     
-    def get_user_profile(self, obj):
-        if hasattr(obj.user, 'profile'):
-            return ProfileSerializer(obj.user.profile).data
+    class Meta:
+        model = User
+        fields = ['id', 'email', 'first_name', 'last_name', 'role', 'is_email_verified', 
+                 'date_joined', 'last_login', 'profile', 'seller_profile']
+        read_only_fields = ['id', 'date_joined', 'last_login']
+    
+    def get_profile(self, obj):
+        # Only return profile for users and admins, not sellers
+        if obj.role != 'seller' and hasattr(obj, 'profile'):
+            return ProfileSerializer(obj.profile).data
+        return None
+    
+    def get_seller_profile(self, obj):
+        # Only return seller profile for sellers
+        if obj.role == 'seller' and hasattr(obj, 'seller'):
+            return SellerSerializer(obj.seller).data
         return None
 
 
