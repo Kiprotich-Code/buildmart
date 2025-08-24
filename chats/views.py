@@ -5,6 +5,8 @@ from django.db.models import Q, Max, Prefetch
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.contrib.auth import get_user_model
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
 
 from .models import Chat, Message
 from .serializers import (
@@ -16,6 +18,7 @@ from .serializers import (
 from products.models import Product
 
 User = get_user_model()
+channel_layer = get_channel_layer()
 
 
 class ChatViewSet(viewsets.ModelViewSet):
@@ -55,6 +58,18 @@ class ChatViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         
         chat = serializer.save()
+        
+        # Notify seller about new chat via WebSocket
+        if channel_layer:
+            async_to_sync(channel_layer.group_send)(
+                f'user_{chat.seller.id}',
+                {
+                    'type': 'chat_created_notification',
+                    'chat_id': str(chat.id),
+                    'participant_name': chat.buyer.get_full_name() or chat.buyer.username,
+                    'product_name': chat.product.name if chat.product else 'General Chat'
+                }
+            )
         
         # Return the chat with full details
         chat_serializer = ChatSerializer(chat, context={'request': request})
@@ -103,6 +118,30 @@ class ChatViewSet(viewsets.ModelViewSet):
         # Update chat's last message time
         chat.last_message_at = timezone.now()
         chat.save(update_fields=['last_message_at'])
+        
+        # Send real-time notification via WebSocket
+        if channel_layer:
+            # Notify chat participants
+            async_to_sync(channel_layer.group_send)(
+                f'chat_{chat.id}',
+                {
+                    'type': 'chat_message',
+                    'message': serializer.data
+                }
+            )
+            
+            # Notify other user for unread count update
+            other_user = chat.seller if chat.buyer == request.user else chat.buyer
+            async_to_sync(channel_layer.group_send)(
+                f'user_{other_user.id}',
+                {
+                    'type': 'new_message_notification',
+                    'chat_id': str(chat.id),
+                    'message_id': str(message.id),
+                    'sender_name': request.user.get_full_name() or request.user.username,
+                    'content_preview': message.content[:50] + '...' if len(message.content) > 50 else message.content
+                }
+            )
         
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     

@@ -1,2 +1,3 @@
 docs
+docs/*
 db.sqlite3
