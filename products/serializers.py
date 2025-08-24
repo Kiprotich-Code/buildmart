@@ -56,13 +56,15 @@ class ProductSerializer(serializers.ModelSerializer):
     review_count = serializers.SerializerMethodField()
     average_rating = serializers.SerializerMethodField()
     recent_reviews = serializers.SerializerMethodField()
+    can_chat = serializers.SerializerMethodField()
+    existing_chat_id = serializers.SerializerMethodField()
     
     class Meta:
         model = Product
         fields = ['id', 'name', 'description', 'price', 'quantity', 'images', 'category', 
                   'category_name', 'seller', 'seller_name', 'seller_email', 'is_active', 
                   'is_boosted', 'boost_expires_at', 'review_count', 'average_rating', 
-                  'recent_reviews', 'created_at', 'updated_at']
+                  'recent_reviews', 'can_chat', 'existing_chat_id', 'created_at', 'updated_at']
         read_only_fields = ['id', 'seller', 'created_at', 'updated_at']
     
     def get_review_count(self, obj):
@@ -77,6 +79,39 @@ class ProductSerializer(serializers.ModelSerializer):
     def get_recent_reviews(self, obj):
         recent_reviews = obj.reviews.order_by('-created_at')[:3]
         return ProductReviewSerializer(recent_reviews, many=True).data
+    
+    def get_can_chat(self, obj):
+        """Check if current user can chat about this product"""
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+        
+        # Users can't chat with themselves
+        if request.user == obj.seller:
+            return False
+        
+        # Product must be active
+        return obj.is_active
+    
+    def get_existing_chat_id(self, obj):
+        """Get existing chat ID if user already has a chat about this product"""
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return None
+        
+        # Import here to avoid circular imports
+        from chats.models import Chat
+        
+        try:
+            chat = Chat.objects.get(
+                buyer=request.user,
+                seller=obj.seller,
+                product=obj,
+                is_active=True
+            )
+            return str(chat.id)
+        except Chat.DoesNotExist:
+            return None
 
 
 class ProductReviewSerializer(serializers.ModelSerializer):

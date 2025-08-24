@@ -282,6 +282,54 @@ class ProductViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def start_chat(self, request, pk=None):
+        """
+        Start a chat about this product with the seller.
+        POST /api/products/products/{id}/start_chat/
+        """
+        product = self.get_object()
+        
+        # Check if user is trying to chat with themselves
+        if request.user == product.seller:
+            return Response(
+                {'error': 'You cannot start a chat with yourself'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if product is active
+        if not product.is_active:
+            return Response(
+                {'error': 'Cannot start chat for inactive product'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Import here to avoid circular imports
+        from chats.models import Chat
+        from chats.serializers import ChatSerializer
+        
+        # Get or create chat
+        chat, created = Chat.objects.get_or_create(
+            buyer=request.user,
+            seller=product.seller,
+            product=product,
+            defaults={'is_active': True}
+        )
+        
+        # If chat exists but was inactive, reactivate it
+        if not created and not chat.is_active:
+            chat.is_active = True
+            chat.save()
+        
+        # Serialize and return chat
+        chat_serializer = ChatSerializer(chat, context={'request': request})
+        
+        return Response({
+            'message': 'Chat started successfully' if created else 'Chat already exists',
+            'chat': chat_serializer.data,
+            'created': created
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def toggle_active(self, request, pk=None):
         """
         Toggle the active status of a product.
