@@ -26,14 +26,57 @@ class CategoryListSerializer(serializers.ModelSerializer):
         return obj.products.filter(is_active=True).count()
 
 
-class ProductSerializer(serializers.ModelSerializer):
+class ProductListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for listing products"""
     category_name = serializers.CharField(source='category.name', read_only=True)
     seller_name = serializers.CharField(source='seller.get_full_name', read_only=True)
+    review_count = serializers.SerializerMethodField()
+    average_rating = serializers.SerializerMethodField()
     
     class Meta:
         model = Product
-        fields = ['id', 'name', 'description', 'price', 'quantity', 'images', 'category', 'category_name', 'seller', 'seller_name', 'is_active', 'is_boosted', 'boost_expires_at', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'price', 'quantity', 'images', 'category', 'category_name', 
+                  'seller', 'seller_name', 'is_active', 'is_boosted', 'review_count', 
+                  'average_rating', 'created_at']
+    
+    def get_review_count(self, obj):
+        return obj.reviews.count()
+    
+    def get_average_rating(self, obj):
+        reviews = obj.reviews.all()
+        if reviews:
+            return round(sum(review.rating for review in reviews) / len(reviews), 1)
+        return None
+
+
+class ProductSerializer(serializers.ModelSerializer):
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    seller_name = serializers.CharField(source='seller.get_full_name', read_only=True)
+    seller_email = serializers.CharField(source='seller.email', read_only=True)
+    review_count = serializers.SerializerMethodField()
+    average_rating = serializers.SerializerMethodField()
+    recent_reviews = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Product
+        fields = ['id', 'name', 'description', 'price', 'quantity', 'images', 'category', 
+                  'category_name', 'seller', 'seller_name', 'seller_email', 'is_active', 
+                  'is_boosted', 'boost_expires_at', 'review_count', 'average_rating', 
+                  'recent_reviews', 'created_at', 'updated_at']
         read_only_fields = ['id', 'seller', 'created_at', 'updated_at']
+    
+    def get_review_count(self, obj):
+        return obj.reviews.count()
+    
+    def get_average_rating(self, obj):
+        reviews = obj.reviews.all()
+        if reviews:
+            return round(sum(review.rating for review in reviews) / len(reviews), 1)
+        return None
+    
+    def get_recent_reviews(self, obj):
+        recent_reviews = obj.reviews.order_by('-created_at')[:3]
+        return ProductReviewSerializer(recent_reviews, many=True).data
 
 
 class ProductReviewSerializer(serializers.ModelSerializer):

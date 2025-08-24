@@ -5,6 +5,7 @@
 ## 🚀 Features
 
 - **Categories Management** - Complete category system with CRUD operations and hierarchy support
+- **Products Management** - Full product catalog with advanced filtering, search, and seller management
 - **JWT Authentication** - Secure token-based authentication with refresh tokens
 - **Role-Based Access Control** - Three user roles: User, Seller, Admin
 - **User Management** - Comprehensive profile management system
@@ -578,6 +579,209 @@ GET /api/products/categories/{id}/products/
 ```
 
 **Response:** Returns all active products in the specified category.
+
+---
+
+### Products Endpoints
+
+#### List All Products
+```http
+GET /api/products/products/
+```
+
+**Query Parameters:**
+- `show_inactive` (boolean): Include inactive products (default: false)
+- `category` (UUID): Filter by category ID
+- `seller` (UUID): Filter by seller ID
+- `min_price` (decimal): Minimum price filter
+- `max_price` (decimal): Maximum price filter
+- `in_stock` (boolean): Show only products with quantity > 0
+- `boosted_only` (boolean): Show only boosted products
+- `search` (string): Search in name, description, and seller name
+- `ordering` (string): Sort by name, price, created_at, updated_at (prefix with - for descending)
+
+**Response:**
+```json
+[
+  {
+    "id": "uuid-here",
+    "name": "Premium Portland Cement",
+    "price": "25.50",
+    "quantity": 100,
+    "images": ["https://example.com/image1.jpg"],
+    "category": "uuid-here",
+    "category_name": "Cement",
+    "seller": "uuid-here",
+    "seller_name": "John Construction Supply",
+    "is_active": true,
+    "is_boosted": false,
+    "review_count": 5,
+    "average_rating": 4.2,
+    "created_at": "2025-08-24T10:30:00Z"
+  }
+]
+```
+
+#### Create Product
+```http
+POST /api/products/products/
+```
+
+**Authentication:** Required (Seller or Admin)
+
+**Request Body:**
+```json
+{
+  "name": "Premium Portland Cement",
+  "description": "High-quality Portland cement for construction projects",
+  "price": "25.50",
+  "quantity": 100,
+  "images": ["https://example.com/image1.jpg", "https://example.com/image2.jpg"],
+  "category": "f1c28ad9-613e-4fcc-8790-f4a07a9a3a14",
+  "is_active": true
+}
+```
+
+**Response:**
+```json
+{
+  "id": "uuid-here",
+  "name": "Premium Portland Cement",
+  "description": "High-quality Portland cement for construction projects",
+  "price": "25.50",
+  "quantity": 100,
+  "images": ["https://example.com/image1.jpg", "https://example.com/image2.jpg"],
+  "category": "f1c28ad9-613e-4fcc-8790-f4a07a9a3a14",
+  "category_name": "Cement",
+  "seller": "uuid-here",
+  "seller_name": "John Construction Supply",
+  "seller_email": "john@example.com",
+  "is_active": true,
+  "is_boosted": false,
+  "boost_expires_at": null,
+  "review_count": 0,
+  "average_rating": null,
+  "recent_reviews": [],
+  "created_at": "2025-08-24T10:30:00Z",
+  "updated_at": "2025-08-24T10:30:00Z"
+}
+```
+
+#### Get Product Details
+```http
+GET /api/products/products/{id}/
+```
+
+**Response:**
+```json
+{
+  "id": "uuid-here",
+  "name": "Premium Portland Cement",
+  "description": "High-quality Portland cement for construction projects",
+  "price": "25.50",
+  "quantity": 100,
+  "images": ["https://example.com/image1.jpg"],
+  "category": "f1c28ad9-613e-4fcc-8790-f4a07a9a3a14",
+  "category_name": "Cement",
+  "seller": "uuid-here",
+  "seller_name": "John Construction Supply",
+  "seller_email": "john@example.com",
+  "is_active": true,
+  "is_boosted": false,
+  "boost_expires_at": null,
+  "review_count": 5,
+  "average_rating": 4.2,
+  "recent_reviews": [
+    {
+      "id": "uuid-here",
+      "user_name": "Jane Smith",
+      "rating": 5,
+      "comment": "Excellent quality cement!",
+      "created_at": "2025-08-23T15:30:00Z"
+    }
+  ],
+  "created_at": "2025-08-24T10:30:00Z",
+  "updated_at": "2025-08-24T10:30:00Z"
+}
+```
+
+#### Update Product
+```http
+PUT /api/products/products/{id}/
+PATCH /api/products/products/{id}/
+```
+
+**Authentication:** Required (Product owner or Admin)
+
+**Request Body (PUT):**
+```json
+{
+  "name": "Updated Premium Portland Cement",
+  "description": "Updated description",
+  "price": "27.50",
+  "quantity": 150,
+  "images": ["https://example.com/new-image.jpg"],
+  "category": "f1c28ad9-613e-4fcc-8790-f4a07a9a3a14",
+  "is_active": true
+}
+```
+
+#### Delete Product
+```http
+DELETE /api/products/products/{id}/
+```
+
+**Authentication:** Required (Product owner or Admin)
+
+#### Get Featured Products
+```http
+GET /api/products/products/featured/
+```
+
+**Response:** Returns boosted/promoted products.
+
+#### Get Popular Products
+```http
+GET /api/products/products/popular/
+```
+
+**Response:** Returns products with high ratings (4.0+) and multiple reviews (3+).
+
+#### Get My Products
+```http
+GET /api/products/products/my_products/
+```
+
+**Authentication:** Required
+
+**Response:** Returns products owned by the current user.
+
+#### Get Product Reviews
+```http
+GET /api/products/products/{id}/reviews/
+```
+
+**Response:** Returns all reviews for the specified product.
+
+#### Toggle Product Active Status
+```http
+POST /api/products/products/{id}/toggle_active/
+```
+
+**Authentication:** Required (Product owner or Admin)
+
+**Response:**
+```json
+{
+  "message": "Product activated successfully",
+  "product": {
+    "id": "uuid-here",
+    "name": "Premium Portland Cement",
+    "is_active": true,
+    // ... other product fields
+  }
+}
+```
 
 ---
 
