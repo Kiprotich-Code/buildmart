@@ -4,6 +4,7 @@
 
 ## 🚀 Features
 
+- **Categories Management** - Complete category system with CRUD operations and hierarchy support
 - **JWT Authentication** - Secure token-based authentication with refresh tokens
 - **Role-Based Access Control** - Three user roles: User, Seller, Admin
 - **User Management** - Comprehensive profile management system
@@ -437,6 +438,146 @@ GET /api/accounts/admin/stats/
   "rejected_sellers": 5
 }
 ```
+
+---
+
+### Categories Endpoints
+
+#### List All Categories
+```http
+GET /api/products/categories/
+```
+
+**Query Parameters:**
+- `show_inactive` (boolean): Include inactive categories (default: false)
+- `parent` (UUID): Filter by parent category ID
+- `search` (string): Search in name and description
+- `ordering` (string): Sort by name, created_at, updated_at (prefix with - for descending)
+
+**Response:**
+```json
+[
+  {
+    "id": "uuid-here",
+    "name": "Electronics",
+    "slug": "electronics",
+    "icon": "📱",
+    "product_count": 25
+  },
+  {
+    "id": "uuid-here", 
+    "name": "Clothing",
+    "slug": "clothing",
+    "icon": "👕",
+    "product_count": 15
+  }
+]
+```
+
+#### Create Category
+```http
+POST /api/products/categories/
+```
+
+**Request Body:**
+```json
+{
+  "name": "Electronics",
+  "slug": "electronics",
+  "description": "Electronic devices and accessories",
+  "icon": "📱",
+  "parent": null,
+  "is_active": true
+}
+```
+
+**Response:**
+```json
+{
+  "id": "uuid-here",
+  "name": "Electronics",
+  "slug": "electronics", 
+  "description": "Electronic devices and accessories",
+  "icon": "📱",
+  "parent": null,
+  "is_active": true,
+  "product_count": 0,
+  "created_at": "2025-08-24T10:30:00Z",
+  "updated_at": "2025-08-24T10:30:00Z"
+}
+```
+
+#### Get Category Details
+```http
+GET /api/products/categories/{id}/
+```
+
+**Response:**
+```json
+{
+  "id": "uuid-here",
+  "name": "Electronics",
+  "slug": "electronics",
+  "description": "Electronic devices and accessories", 
+  "icon": "📱",
+  "parent": null,
+  "is_active": true,
+  "product_count": 25,
+  "created_at": "2025-08-24T10:30:00Z",
+  "updated_at": "2025-08-24T10:30:00Z"
+}
+```
+
+#### Update Category
+```http
+PUT /api/products/categories/{id}/
+PATCH /api/products/categories/{id}/
+```
+
+**Request Body (PUT):**
+```json
+{
+  "name": "Electronics & Gadgets",
+  "slug": "electronics-gadgets",
+  "description": "Electronic devices, gadgets and accessories",
+  "icon": "📱",
+  "parent": null,
+  "is_active": true
+}
+```
+
+#### Delete Category
+```http
+DELETE /api/products/categories/{id}/
+```
+
+#### Get Root Categories
+```http
+GET /api/products/categories/root_categories/
+```
+
+**Response:** Returns categories without a parent category.
+
+#### Get Subcategories
+```http
+GET /api/products/categories/subcategories/
+```
+
+**Response:** Returns categories that have a parent category.
+
+#### Get Category Children
+```http
+GET /api/products/categories/{id}/children/
+```
+
+**Response:** Returns direct child categories of the specified category.
+
+#### Get Category Products
+```http
+GET /api/products/categories/{id}/products/
+```
+
+**Response:** Returns all active products in the specified category.
 
 ---
 
