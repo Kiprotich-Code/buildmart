@@ -1,6 +1,6 @@
 asgiref==3.8.1
 async-timeout==5.0.1
-backports.zoneinfo==0.2.1
+backports.zoneinfo;python_version<"3.9"
 channels==4.2.2
 channels-redis==4.2.1
 django==4.2.23
