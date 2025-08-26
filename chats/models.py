@@ -11,6 +11,8 @@ class Chat(models.Model):
     product = models.ForeignKey('products.Product', on_delete=models.SET_NULL, null=True, blank=True, related_name='chats')
     last_message_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
+    is_flagged = models.BooleanField(default=False)
+    flag_reason = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
