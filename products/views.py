@@ -146,10 +146,15 @@ class ProductViewSet(viewsets.ModelViewSet):
         """
         queryset = Product.objects.select_related('category', 'seller').prefetch_related('reviews')
         
-        # Filter by active status (default to active only)
-        show_inactive = self.request.query_params.get('show_inactive', 'false').lower()
-        if show_inactive not in ['true', '1']:
-            queryset = queryset.filter(is_active=True)
+        # For admin users, allow access to inactive products for modification operations
+        if hasattr(self.request, 'user') and self.request.user.is_authenticated and self.request.user.is_staff:
+            # Admin users can access all products including inactive ones
+            pass
+        else:
+            # Filter by active status (default to active only for non-admin users)
+            show_inactive = self.request.query_params.get('show_inactive', 'false').lower()
+            if show_inactive not in ['true', '1']:
+                queryset = queryset.filter(is_active=True)
         
         # Filter by category
         category_id = self.request.query_params.get('category')
