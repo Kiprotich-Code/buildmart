@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from .models import Category, Product, ProductReview, Boost
+from .models import Category, Product, ProductReview, Boost, ProductImage
+from .utils import validate_image
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -26,18 +27,68 @@ class CategoryListSerializer(serializers.ModelSerializer):
         return obj.products.filter(is_active=True).count()
 
 
+class ProductImageSerializer(serializers.ModelSerializer):
+    """Serializer for product images"""
+    
+    class Meta:
+        model = ProductImage
+        fields = ['id', 'image', 'thumbnail', 'alt_text', 'order', 'width', 'height', 'file_size', 'created_at']
+        read_only_fields = ['id', 'thumbnail', 'width', 'height', 'file_size', 'created_at']
+
+    def validate_image(self, value):
+        """Validate uploaded image"""
+        validate_image(value)
+        return value
+
+
+class ProductImageUploadSerializer(serializers.Serializer):
+    """Serializer for bulk image upload"""
+    images = serializers.ListField(
+        child=serializers.ImageField(),
+        min_length=1,
+        max_length=10,  # Maximum 10 images per product
+        help_text="List of image files to upload"
+    )
+    alt_texts = serializers.ListField(
+        child=serializers.CharField(max_length=255, required=False, allow_blank=True),
+        required=False,
+        help_text="Optional list of alt texts for images (same order as images)"
+    )
+
+    def validate_images(self, value):
+        """Validate all uploaded images"""
+        for image in value:
+            validate_image(image)
+        return value
+
+    def validate(self, data):
+        """Validate that alt_texts length matches images length if provided"""
+        images = data.get('images', [])
+        alt_texts = data.get('alt_texts', [])
+        
+        if alt_texts and len(alt_texts) != len(images):
+            raise serializers.ValidationError(
+                "Number of alt texts must match number of images"
+            )
+        
+        return data
+
+
 class ProductListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for listing products"""
     category_name = serializers.CharField(source='category.name', read_only=True)
     seller_name = serializers.CharField(source='seller.get_full_name', read_only=True)
     review_count = serializers.SerializerMethodField()
     average_rating = serializers.SerializerMethodField()
+    image_urls = serializers.ReadOnlyField()
+    thumbnail_urls = serializers.ReadOnlyField()
+    primary_image_url = serializers.SerializerMethodField()
     
     class Meta:
         model = Product
-        fields = ['id', 'name', 'price', 'quantity', 'images', 'category', 'category_name', 
-                  'seller', 'seller_name', 'is_active', 'is_boosted', 'review_count', 
-                  'average_rating', 'created_at']
+        fields = ['id', 'name', 'price', 'quantity', 'images', 'image_urls', 'thumbnail_urls', 'primary_image_url', 
+                  'category', 'category_name', 'seller', 'seller_name', 'is_active', 'is_boosted', 
+                  'review_count', 'average_rating', 'created_at']
     
     def get_review_count(self, obj):
         return obj.reviews.count()
@@ -47,6 +98,10 @@ class ProductListSerializer(serializers.ModelSerializer):
         if reviews:
             return round(sum(review.rating for review in reviews) / len(reviews), 1)
         return None
+
+    def get_primary_image_url(self, obj):
+        primary_image = obj.primary_image
+        return primary_image.image.url if primary_image else None
 
 
 class ProductSerializer(serializers.ModelSerializer):
@@ -58,12 +113,15 @@ class ProductSerializer(serializers.ModelSerializer):
     recent_reviews = serializers.SerializerMethodField()
     can_chat = serializers.SerializerMethodField()
     existing_chat_id = serializers.SerializerMethodField()
+    product_images = ProductImageSerializer(many=True, read_only=True)
+    image_urls = serializers.ReadOnlyField()
+    thumbnail_urls = serializers.ReadOnlyField()
     
     class Meta:
         model = Product
-        fields = ['id', 'name', 'description', 'price', 'quantity', 'images', 'category', 
-                  'category_name', 'seller', 'seller_name', 'seller_email', 'is_active', 
-                  'is_boosted', 'boost_expires_at', 'review_count', 'average_rating', 
+        fields = ['id', 'name', 'description', 'price', 'quantity', 'images', 'image_urls', 'thumbnail_urls',
+                  'product_images', 'category', 'category_name', 'seller', 'seller_name', 'seller_email', 
+                  'is_active', 'is_boosted', 'boost_expires_at', 'review_count', 'average_rating', 
                   'recent_reviews', 'can_chat', 'existing_chat_id', 'created_at', 'updated_at']
         read_only_fields = ['id', 'seller', 'created_at', 'updated_at']
     

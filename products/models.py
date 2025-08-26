@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth import get_user_model
 import uuid
 from django.core.validators import MinValueValidator
+from .utils import generate_image_filename, delete_image_file
 
 User = get_user_model()
 
@@ -32,7 +33,7 @@ class Product(models.Model):
     description = models.TextField(blank=True, null=True)
     price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
     quantity = models.IntegerField(default=0, validators=[MinValueValidator(0)])
-    images = models.JSONField(default=list, blank=True, help_text="List of image URLs")
+    images = models.JSONField(default=list, blank=True, help_text="List of image URLs (deprecated - use ProductImage model)")
     is_active = models.BooleanField(default=True)
     is_boosted = models.BooleanField(default=False)
     boost_expires_at = models.DateTimeField(blank=True, null=True)
@@ -44,6 +45,79 @@ class Product(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def image_urls(self):
+        """Get all image URLs for this product"""
+        return [img.image.url for img in self.product_images.filter(is_active=True).order_by('order')]
+
+    @property
+    def thumbnail_urls(self):
+        """Get all thumbnail URLs for this product"""
+        return [img.thumbnail.url for img in self.product_images.filter(is_active=True).order_by('order') if img.thumbnail]
+
+    @property
+    def primary_image(self):
+        """Get the primary (first) image for this product"""
+        return self.product_images.filter(is_active=True).order_by('order').first()
+
+
+class ProductImage(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='product_images')
+    image = models.ImageField(upload_to=generate_image_filename)
+    thumbnail = models.ImageField(upload_to=generate_image_filename, blank=True, null=True)
+    alt_text = models.CharField(max_length=255, blank=True, help_text="Alternative text for accessibility")
+    order = models.PositiveIntegerField(default=0, help_text="Display order (0 = primary image)")
+    is_active = models.BooleanField(default=True)
+    width = models.PositiveIntegerField(null=True, blank=True)
+    height = models.PositiveIntegerField(null=True, blank=True)
+    file_size = models.PositiveIntegerField(null=True, blank=True, help_text="File size in bytes")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'product_images'
+        ordering = ['order', 'created_at']
+        indexes = [
+            models.Index(fields=['product', 'is_active', 'order']),
+        ]
+
+    def __str__(self):
+        return f"Image for {self.product.name} (Order: {self.order})"
+
+    def delete(self, *args, **kwargs):
+        """Override delete to clean up image files"""
+        # Delete image files from storage
+        if self.image:
+            delete_image_file(self.image.name)
+        if self.thumbnail:
+            delete_image_file(self.thumbnail.name)
+        super().delete(*args, **kwargs)
+
+    def save(self, *args, **kwargs):
+        """Override save to process images"""
+        from .utils import process_image, create_thumbnail, get_image_dimensions, PILLOW_AVAILABLE
+        
+        if self.image and not self.pk:  # New image upload
+            # Process the main image
+            processed_image = process_image(self.image)
+            self.image.save(self.image.name, processed_image, save=False)
+            
+            # Get image dimensions if Pillow is available
+            if PILLOW_AVAILABLE:
+                self.width, self.height = get_image_dimensions(self.image)
+            
+            self.file_size = self.image.size
+            
+            # Create thumbnail if Pillow is available
+            if PILLOW_AVAILABLE:
+                thumbnail = create_thumbnail(self.image)
+                if thumbnail:
+                    thumbnail_name = f"thumb_{self.image.name.split('/')[-1]}"
+                    self.thumbnail.save(thumbnail_name, thumbnail, save=False)
+        
+        super().save(*args, **kwargs)
 
 
 class ProductReview(models.Model):

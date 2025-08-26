@@ -182,9 +182,7 @@ class ChatViewSet(viewsets.ModelViewSet):
             'unread_count': unread_count
         })
 
-    # =============================================================================
     # ADMIN CHAT MONITORING ENDPOINTS
-    # =============================================================================
     
     @action(detail=False, methods=['get'], permission_classes=[permissions.IsAdminUser])
     def admin_all_chats(self, request):

@@ -2,3 +2,4 @@ docs
 docs/*
 db.sqlite3
 venv
+tests

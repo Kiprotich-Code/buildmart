@@ -2,15 +2,19 @@ from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticatedOrReadOnly, IsAuthenticated
-from django.db.models import Q, Avg, Count
-from .models import Category, Product, ProductReview, Boost
+from rest_framework.parsers import MultiPartParser, FormParser
+from django.db.models import Q, Avg, Count, Max
+from django.db import transaction
+from .models import Category, Product, ProductReview, Boost, ProductImage
 from .serializers import (
     CategorySerializer, 
     CategoryListSerializer,
     ProductSerializer,
     ProductListSerializer,
     ProductReviewSerializer,
-    BoostSerializer
+    BoostSerializer,
+    ProductImageSerializer,
+    ProductImageUploadSerializer
 )
 
 
@@ -355,3 +359,159 @@ class ProductViewSet(viewsets.ModelViewSet):
             'message': f'Product {"activated" if product.is_active else "deactivated"} successfully',
             'product': serializer.data
         })
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated], 
+            parser_classes=[MultiPartParser, FormParser])
+    def upload_images(self, request, pk=None):
+        """
+        Upload multiple images for a product.
+        POST /api/products/products/{id}/upload_images/
+        
+        Form data:
+        - images: List of image files
+        - alt_texts: Optional list of alt texts (same order as images)
+        """
+        product = self.get_object()
+        
+        # Check if user owns the product
+        if request.user != product.seller and not request.user.is_staff:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("You can only upload images to your own products.")
+        
+        serializer = ProductImageUploadSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        images = serializer.validated_data['images']
+        alt_texts = serializer.validated_data.get('alt_texts', [])
+        
+        # Check current image count
+        current_count = product.product_images.filter(is_active=True).count()
+        if current_count + len(images) > 10:
+            return Response({
+                'error': f'Cannot upload {len(images)} images. Maximum 10 images per product. Current: {current_count}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        created_images = []
+        try:
+            with transaction.atomic():
+                # Get the next order number
+                max_order = product.product_images.aggregate(
+                    max_order=Max('order')
+                )['max_order'] or -1
+                
+                for i, image in enumerate(images):
+                    alt_text = alt_texts[i] if i < len(alt_texts) else ''
+                    
+                    product_image = ProductImage.objects.create(
+                        product=product,
+                        image=image,
+                        alt_text=alt_text,
+                        order=max_order + i + 1
+                    )
+                    created_images.append(product_image)
+                    
+        except Exception as e:
+            return Response({
+                'error': f'Failed to upload images: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # Serialize and return created images
+        image_serializer = ProductImageSerializer(created_images, many=True)
+        return Response({
+            'message': f'Successfully uploaded {len(created_images)} images',
+            'images': image_serializer.data
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'])
+    def images(self, request, pk=None):
+        """
+        Get all images for a product.
+        GET /api/products/products/{id}/images/
+        """
+        product = self.get_object()
+        images = product.product_images.filter(is_active=True).order_by('order')
+        serializer = ProductImageSerializer(images, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def reorder_images(self, request, pk=None):
+        """
+        Reorder product images.
+        POST /api/products/products/{id}/reorder_images/
+        
+        Body: {
+            "image_orders": [
+                {"id": "image_id", "order": 0},
+                {"id": "image_id", "order": 1},
+                ...
+            ]
+        }
+        """
+        product = self.get_object()
+        
+        # Check if user owns the product
+        if request.user != product.seller and not request.user.is_staff:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("You can only reorder images of your own products.")
+        
+        image_orders = request.data.get('image_orders', [])
+        if not image_orders:
+            return Response({
+                'error': 'image_orders field is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            with transaction.atomic():
+                for item in image_orders:
+                    image_id = item.get('id')
+                    order = item.get('order')
+                    
+                    if image_id is None or order is None:
+                        return Response({
+                            'error': 'Each item must have id and order fields'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                    
+                    try:
+                        image = ProductImage.objects.get(id=image_id, product=product)
+                        image.order = order
+                        image.save()
+                    except ProductImage.DoesNotExist:
+                        return Response({
+                            'error': f'Image with id {image_id} not found'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                        
+        except Exception as e:
+            return Response({
+                'error': f'Failed to reorder images: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        return Response({'message': 'Images reordered successfully'})
+
+    @action(detail=True, methods=['delete'], permission_classes=[IsAuthenticated])
+    def delete_image(self, request, pk=None):
+        """
+        Delete a specific product image.
+        DELETE /api/products/products/{id}/delete_image/?image_id=<image_id>
+        """
+        product = self.get_object()
+        
+        # Check if user owns the product
+        if request.user != product.seller and not request.user.is_staff:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("You can only delete images from your own products.")
+        
+        image_id = request.query_params.get('image_id')
+        if not image_id:
+            return Response({
+                'error': 'image_id parameter is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            image = ProductImage.objects.get(id=image_id, product=product)
+            image.delete()
+            return Response({'message': 'Image deleted successfully'})
+        except ProductImage.DoesNotExist:
+            return Response({
+                'error': 'Image not found'
+            }, status=status.HTTP_404_NOT_FOUND)
