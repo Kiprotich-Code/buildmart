@@ -6,6 +6,8 @@
 
 - **Categories Management** - Complete category system with CRUD operations and hierarchy support
 - **Products Management** - Full product catalog with advanced filtering, search, and seller management
+- **Product Image Upload** - Production-ready image upload system with Pillow processing, automatic optimization, and thumbnail generation
+- **Real-time Chat System** - WebSocket-powered messaging between buyers and sellers with admin monitoring
 - **JWT Authentication** - Secure token-based authentication with refresh tokens
 - **Role-Based Access Control** - Three user roles: User, Seller, Admin
 - **User Management** - Comprehensive profile management system
@@ -31,6 +33,11 @@
 pip install django
 pip install djangorestframework
 pip install djangorestframework-simplejwt
+pip install channels
+pip install channels-redis
+pip install django-cors-headers
+pip install Pillow
+pip install redis
 ```
 
 ### Installation
@@ -609,6 +616,9 @@ GET /api/products/products/
     "price": "25.50",
     "quantity": 100,
     "images": ["https://example.com/image1.jpg"],
+    "image_urls": ["/media/products/images/image1.jpg"],
+    "thumbnail_urls": ["/media/products/images/thumb_image1.jpg"],
+    "primary_image_url": "/media/products/images/image1.jpg",
     "category": "uuid-here",
     "category_name": "Cement",
     "seller": "uuid-here",
@@ -651,6 +661,21 @@ POST /api/products/products/
   "price": "25.50",
   "quantity": 100,
   "images": ["https://example.com/image1.jpg", "https://example.com/image2.jpg"],
+  "image_urls": ["/media/products/images/image1.jpg", "/media/products/images/image2.jpg"],
+  "thumbnail_urls": ["/media/products/images/thumb_image1.jpg", "/media/products/images/thumb_image2.jpg"],
+  "product_images": [
+    {
+      "id": "image-uuid",
+      "image": "/media/products/images/image1.jpg",
+      "thumbnail": "/media/products/images/thumb_image1.jpg",
+      "alt_text": "Product front view",
+      "order": 0,
+      "width": 1200,
+      "height": 900,
+      "file_size": 245760,
+      "created_at": "2025-08-26T10:30:00Z"
+    }
+  ],
   "category": "f1c28ad9-613e-4fcc-8790-f4a07a9a3a14",
   "category_name": "Cement",
   "seller": "uuid-here",
@@ -662,6 +687,8 @@ POST /api/products/products/
   "review_count": 0,
   "average_rating": null,
   "recent_reviews": [],
+  "can_chat": true,
+  "existing_chat_id": null,
   "created_at": "2025-08-24T10:30:00Z",
   "updated_at": "2025-08-24T10:30:00Z"
 }
@@ -681,6 +708,21 @@ GET /api/products/products/{id}/
   "price": "25.50",
   "quantity": 100,
   "images": ["https://example.com/image1.jpg"],
+  "image_urls": ["/media/products/images/image1.jpg"],
+  "thumbnail_urls": ["/media/products/images/thumb_image1.jpg"],
+  "product_images": [
+    {
+      "id": "image-uuid",
+      "image": "/media/products/images/image1.jpg",
+      "thumbnail": "/media/products/images/thumb_image1.jpg",
+      "alt_text": "Product front view",
+      "order": 0,
+      "width": 1200,
+      "height": 900,
+      "file_size": 245760,
+      "created_at": "2025-08-26T10:30:00Z"
+    }
+  ],
   "category": "f1c28ad9-613e-4fcc-8790-f4a07a9a3a14",
   "category_name": "Cement",
   "seller": "uuid-here",
@@ -700,6 +742,8 @@ GET /api/products/products/{id}/
       "created_at": "2025-08-23T15:30:00Z"
     }
   ],
+  "can_chat": true,
+  "existing_chat_id": "chat-uuid-here",
   "created_at": "2025-08-24T10:30:00Z",
   "updated_at": "2025-08-24T10:30:00Z"
 }
@@ -779,6 +823,422 @@ POST /api/products/products/{id}/toggle_active/
     "name": "Premium Portland Cement",
     "is_active": true,
     // ... other product fields
+  }
+}
+```
+
+#### Upload Product Images
+```http
+POST /api/products/products/{id}/upload_images/
+```
+
+**Authentication:** Required (Product owner or Admin)
+
+**Content-Type:** `multipart/form-data`
+
+**Form Data:**
+- `images`: List of image files (max 10 images per product)
+- `alt_texts`: Optional list of alt texts for images (same order as images)
+
+**Example using curl:**
+```bash
+curl -X POST \
+  http://localhost:8000/api/products/products/{product_id}/upload_images/ \
+  -H "Authorization: Bearer your-jwt-token" \
+  -F "images=@image1.jpg" \
+  -F "images=@image2.png" \
+  -F "alt_texts=Product front view" \
+  -F "alt_texts=Product side view"
+```
+
+**Response:**
+```json
+{
+  "message": "Successfully uploaded 2 images",
+  "images": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "image": "/media/products/images/550e8400-e29b-41d4-a716-446655440000.jpg",
+      "thumbnail": "/media/products/images/thumb_550e8400-e29b-41d4-a716-446655440000.jpg",
+      "alt_text": "Product front view",
+      "order": 0,
+      "width": 1200,
+      "height": 900,
+      "file_size": 245760,
+      "created_at": "2025-08-26T10:30:00Z"
+    }
+  ]
+}
+```
+
+#### Get Product Images
+```http
+GET /api/products/products/{id}/images/
+```
+
+**Response:**
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "image": "/media/products/images/550e8400-e29b-41d4-a716-446655440000.jpg",
+    "thumbnail": "/media/products/images/thumb_550e8400-e29b-41d4-a716-446655440000.jpg",
+    "alt_text": "Product front view",
+    "order": 0,
+    "width": 1200,
+    "height": 900,
+    "file_size": 245760,
+    "created_at": "2025-08-26T10:30:00Z"
+  }
+]
+```
+
+#### Reorder Product Images
+```http
+POST /api/products/products/{id}/reorder_images/
+```
+
+**Authentication:** Required (Product owner or Admin)
+
+**Request Body:**
+```json
+{
+  "image_orders": [
+    {"id": "550e8400-e29b-41d4-a716-446655440000", "order": 0},
+    {"id": "550e8400-e29b-41d4-a716-446655440001", "order": 1}
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Images reordered successfully"
+}
+```
+
+#### Delete Product Image
+```http
+DELETE /api/products/products/{id}/delete_image/?image_id={image_id}
+```
+
+**Authentication:** Required (Product owner or Admin)
+
+**Response:**
+```json
+{
+  "message": "Image deleted successfully"
+}
+```
+
+#### Start Chat About Product
+```http
+POST /api/products/products/{id}/start_chat/
+```
+
+**Authentication:** Required
+
+**Description:** Start a chat conversation with the product seller.
+
+**Response:**
+```json
+{
+  "message": "Chat started successfully",
+  "chat": {
+    "id": "chat-uuid-here",
+    "buyer": "buyer-uuid",
+    "seller": "seller-uuid", 
+    "product": "product-uuid",
+    "is_active": true,
+    "created_at": "2025-08-26T10:30:00Z"
+  },
+  "created": true
+}
+```
+
+---
+
+### Chat System Endpoints
+
+The chat system enables real-time communication between buyers and sellers about specific products. It includes WebSocket support for real-time messaging and comprehensive admin monitoring features.
+
+#### List User's Chats
+```http
+GET /api/chats/chats/
+```
+
+**Authentication:** Required
+
+**Description:** Get all active chats for the current user (buyer or seller).
+
+**Response:**
+```json
+[
+  {
+    "id": "chat-uuid-here",
+    "buyer": {
+      "id": "buyer-uuid",
+      "email": "buyer@example.com",
+      "full_name": "John Buyer"
+    },
+    "seller": {
+      "id": "seller-uuid", 
+      "email": "seller@example.com",
+      "full_name": "Jane Seller"
+    },
+    "product": {
+      "id": "product-uuid",
+      "name": "Premium Portland Cement",
+      "category_name": "Cement"
+    },
+    "last_message_at": "2025-08-26T15:30:00Z",
+    "unread_count": 2,
+    "last_message": {
+      "content": "Is this still available?",
+      "sender_name": "John Buyer",
+      "created_at": "2025-08-26T15:30:00Z"
+    },
+    "is_active": true,
+    "created_at": "2025-08-26T10:00:00Z"
+  }
+]
+```
+
+#### Create New Chat
+```http
+POST /api/chats/chats/
+```
+
+**Authentication:** Required
+
+**Request Body:**
+```json
+{
+  "seller": "seller-uuid-here",
+  "product": "product-uuid-here"
+}
+```
+
+**Response:**
+```json
+{
+  "id": "new-chat-uuid",
+  "buyer": {...},
+  "seller": {...},
+  "product": {...},
+  "is_active": true,
+  "created_at": "2025-08-26T16:00:00Z"
+}
+```
+
+#### Get Chat Messages
+```http
+GET /api/chats/chats/{chat_id}/messages/
+```
+
+**Authentication:** Required (Chat participant only)
+
+**Description:** Get all messages in a specific chat. Automatically marks messages as read.
+
+**Response:**
+```json
+[
+  {
+    "id": "message-uuid",
+    "sender": {
+      "id": "user-uuid",
+      "full_name": "John Buyer",
+      "email": "buyer@example.com"
+    },
+    "message_type": "text",
+    "content": "Is this cement still available?",
+    "file_url": null,
+    "is_read": true,
+    "is_edited": false,
+    "created_at": "2025-08-26T15:30:00Z"
+  },
+  {
+    "id": "message-uuid-2",
+    "sender": {
+      "id": "seller-uuid",
+      "full_name": "Jane Seller",
+      "email": "seller@example.com"
+    },
+    "message_type": "text",
+    "content": "Yes, we have 100 bags in stock!",
+    "file_url": null,
+    "is_read": false,
+    "is_edited": false,
+    "created_at": "2025-08-26T15:35:00Z"
+  }
+]
+```
+
+#### Send Message
+```http
+POST /api/chats/chats/{chat_id}/send_message/
+```
+
+**Authentication:** Required (Chat participant only)
+
+**Request Body:**
+```json
+{
+  "message_type": "text",
+  "content": "What's the price for bulk orders?"
+}
+```
+
+**For image/file messages:**
+```json
+{
+  "message_type": "image",
+  "content": "Here's a photo of the product",
+  "file_url": "https://example.com/image.jpg"
+}
+```
+
+**Response:**
+```json
+{
+  "id": "new-message-uuid",
+  "sender": {
+    "id": "user-uuid",
+    "full_name": "John Buyer",
+    "email": "buyer@example.com"
+  },
+  "message_type": "text",
+  "content": "What's the price for bulk orders?",
+  "file_url": null,
+  "is_read": false,
+  "is_edited": false,
+  "created_at": "2025-08-26T16:00:00Z"
+}
+```
+
+#### Mark Messages as Read
+```http
+PATCH /api/chats/chats/{chat_id}/mark_as_read/
+```
+
+**Authentication:** Required (Chat participant only)
+
+**Response:**
+```json
+{
+  "message": "3 messages marked as read"
+}
+```
+
+#### Get Unread Count
+```http
+GET /api/chats/chats/unread_count/
+```
+
+**Authentication:** Required
+
+**Response:**
+```json
+{
+  "unread_count": 5
+}
+```
+
+#### Update Message
+```http
+PUT /api/chats/messages/{message_id}/
+PATCH /api/chats/messages/{message_id}/
+```
+
+**Authentication:** Required (Message sender only)
+
+**Request Body:**
+```json
+{
+  "content": "Updated message content"
+}
+```
+
+#### Delete Message
+```http
+DELETE /api/chats/messages/{message_id}/
+```
+
+**Authentication:** Required (Message sender only)
+
+#### Flag Chat (Report)
+```http
+POST /api/chats/chats/{chat_id}/flag/
+```
+
+**Authentication:** Required
+
+**Request Body:**
+```json
+{
+  "reason": "Inappropriate content or spam"
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Chat flagged successfully"
+}
+```
+
+### Admin Chat Monitoring
+
+#### Get All Chats (Admin)
+```http
+GET /api/chats/chats/admin_all_chats/
+```
+
+**Authentication:** Admin required
+
+**Query Parameters:**
+- `status`: 'active', 'archived', 'all' (default: 'all')
+- `is_flagged`: true/false to filter flagged chats
+- `search`: Search in buyer/seller emails or product names
+- `date_from`: Filter chats created from this date (YYYY-MM-DD)
+- `date_to`: Filter chats created to this date (YYYY-MM-DD)
+
+#### Get Chat Statistics (Admin)
+```http
+GET /api/chats/chats/admin_chat_stats/
+```
+
+**Authentication:** Admin required
+
+**Response:**
+```json
+{
+  "total_chats": 150,
+  "active_chats": 120,
+  "flagged_chats": 5,
+  "total_messages": 2500,
+  "chats_today": 10,
+  "messages_today": 45
+}
+```
+
+### WebSocket Support
+
+The chat system supports real-time messaging via WebSockets. Connect to:
+
+```
+ws://localhost:8000/ws/chat/{chat_id}/
+```
+
+**WebSocket Message Format:**
+```json
+{
+  "type": "chat_message",
+  "message": {
+    "id": "message-uuid",
+    "content": "Real-time message",
+    "sender": {...},
+    "created_at": "2025-08-26T16:00:00Z"
   }
 }
 ```
