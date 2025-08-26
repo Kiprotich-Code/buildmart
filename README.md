@@ -7,6 +7,7 @@
 - **Categories Management** - Complete category system with CRUD operations and hierarchy support
 - **Products Management** - Full product catalog with advanced filtering, search, and seller management
 - **Product Image Upload** - Production-ready image upload system with Pillow processing, automatic optimization, and thumbnail generation
+- **Single-Step Product Creation** - Create products with images in one API call for improved efficiency
 - **Real-time Chat System** - WebSocket-powered messaging between buyers and sellers with admin monitoring
 - **JWT Authentication** - Secure token-based authentication with refresh tokens
 - **Role-Based Access Control** - Three user roles: User, Seller, Admin
@@ -691,6 +692,145 @@ POST /api/products/products/
   "existing_chat_id": null,
   "created_at": "2025-08-24T10:30:00Z",
   "updated_at": "2025-08-24T10:30:00Z"
+}
+```
+
+#### Create Product with Images (One API Call) 🆕
+```http
+POST /api/products/products/
+Content-Type: multipart/form-data
+```
+
+**Authentication:** Required (Seller or Admin)
+
+**Description:** Create a product and upload images simultaneously in a single API call. This is the recommended approach for creating products with images as it's more efficient than the two-step process.
+
+**Form Data Fields:**
+- `name` (string, required): Product name
+- `description` (string, optional): Product description
+- `price` (decimal, required): Product price
+- `quantity` (integer, required): Available quantity
+- `category` (UUID, required): Category ID
+- `images` (file[], optional): Array of image files (max 10 images)
+- `alt_texts` (string[], optional): Alt text for each image (same order as images)
+- `is_active` (boolean, optional): Product status (default: true)
+
+**cURL Example:**
+```bash
+curl -X POST \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -F "name=Premium Steel Beams" \
+  -F "description=High-grade steel beams for construction" \
+  -F "price=450.00" \
+  -F "quantity=25" \
+  -F "category=f1c28ad9-613e-4fcc-8790-f4a07a9a3a14" \
+  -F "images=@beam1.jpg" \
+  -F "images=@beam2.jpg" \
+  -F "images=@beam3.jpg" \
+  -F "alt_texts=Steel beam front view" \
+  -F "alt_texts=Steel beam side view" \
+  -F "alt_texts=Steel beam dimensions" \
+  http://localhost:8000/api/products/products/
+```
+
+**JavaScript/FormData Example:**
+```javascript
+const formData = new FormData();
+formData.append('name', 'Premium Steel Beams');
+formData.append('description', 'High-grade steel beams for construction');
+formData.append('price', '450.00');
+formData.append('quantity', '25');
+formData.append('category', 'f1c28ad9-613e-4fcc-8790-f4a07a9a3a14');
+
+// Add multiple images
+formData.append('images', beamImage1File);  // File object
+formData.append('images', beamImage2File);  // File object
+formData.append('images', beamImage3File);  // File object
+
+// Add alt texts
+formData.append('alt_texts', 'Steel beam front view');
+formData.append('alt_texts', 'Steel beam side view');
+formData.append('alt_texts', 'Steel beam dimensions');
+
+fetch('/api/products/products/', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer ' + token
+  },
+  body: formData
+});
+```
+
+**Response:**
+```json
+{
+  "id": "new-product-uuid",
+  "name": "Premium Steel Beams",
+  "description": "High-grade steel beams for construction",
+  "price": "450.00",
+  "quantity": 25,
+  "images": [],  // Legacy field - empty for new products
+  "image_urls": [
+    "/media/products/images/beam1-uuid.jpg",
+    "/media/products/images/beam2-uuid.jpg", 
+    "/media/products/images/beam3-uuid.jpg"
+  ],
+  "thumbnail_urls": [
+    "/media/products/images/beam1-uuid_thumb.jpg",
+    "/media/products/images/beam2-uuid_thumb.jpg",
+    "/media/products/images/beam3-uuid_thumb.jpg"
+  ],
+  "primary_image_url": "/media/products/images/beam1-uuid.jpg",
+  "product_images": [
+    {
+      "id": "image1-uuid",
+      "image": "/media/products/images/beam1-uuid.jpg",
+      "thumbnail": "/media/products/images/beam1-uuid_thumb.jpg",
+      "alt_text": "Steel beam front view",
+      "order": 0,
+      "width": 1200,
+      "height": 800,
+      "file_size": 342156,
+      "created_at": "2025-08-26T10:30:00Z"
+    },
+    {
+      "id": "image2-uuid",
+      "image": "/media/products/images/beam2-uuid.jpg",
+      "thumbnail": "/media/products/images/beam2-uuid_thumb.jpg",
+      "alt_text": "Steel beam side view", 
+      "order": 1,
+      "width": 1200,
+      "height": 800,
+      "file_size": 298745,
+      "created_at": "2025-08-26T10:30:00Z"
+    },
+    {
+      "id": "image3-uuid",
+      "image": "/media/products/images/beam3-uuid.jpg",
+      "thumbnail": "/media/products/images/beam3-uuid_thumb.jpg",
+      "alt_text": "Steel beam dimensions",
+      "order": 2,
+      "width": 1200,
+      "height": 800, 
+      "file_size": 315642,
+      "created_at": "2025-08-26T10:30:00Z"
+    }
+  ],
+  "category": "f1c28ad9-613e-4fcc-8790-f4a07a9a3a14",
+  "category_name": "Steel & Metal",
+  "seller": "seller-uuid",
+  "seller_name": "Steel Supply Co",
+  "seller_email": "sales@steelsupply.com",
+  "is_active": true,
+  "is_boosted": false,
+  "boost_expires_at": null,
+  "review_count": 0,
+  "average_rating": null,
+  "recent_reviews": [],
+  "can_chat": false,  // Can't chat with yourself
+  "existing_chat_id": null,
+  "created_at": "2025-08-26T10:30:00Z",
+  "updated_at": "2025-08-26T10:30:00Z"
 }
 ```
 

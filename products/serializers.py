@@ -80,9 +80,10 @@ class ProductListSerializer(serializers.ModelSerializer):
     seller_name = serializers.CharField(source='seller.get_full_name', read_only=True)
     review_count = serializers.SerializerMethodField()
     average_rating = serializers.SerializerMethodField()
+    images = serializers.ReadOnlyField()  # Uses the @property method
     image_urls = serializers.ReadOnlyField()
     thumbnail_urls = serializers.ReadOnlyField()
-    primary_image_url = serializers.SerializerMethodField()
+    primary_image_url = serializers.ReadOnlyField()
     
     class Meta:
         model = Product
@@ -99,10 +100,6 @@ class ProductListSerializer(serializers.ModelSerializer):
             return round(sum(review.rating for review in reviews) / len(reviews), 1)
         return None
 
-    def get_primary_image_url(self, obj):
-        primary_image = obj.primary_image
-        return primary_image.image.url if primary_image else None
-
 
 class ProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
@@ -114,14 +111,16 @@ class ProductSerializer(serializers.ModelSerializer):
     can_chat = serializers.SerializerMethodField()
     existing_chat_id = serializers.SerializerMethodField()
     product_images = ProductImageSerializer(many=True, read_only=True)
+    images = serializers.ReadOnlyField()  # Uses the @property method for backward compatibility
     image_urls = serializers.ReadOnlyField()
     thumbnail_urls = serializers.ReadOnlyField()
+    primary_image_url = serializers.ReadOnlyField()
     
     class Meta:
         model = Product
         fields = ['id', 'name', 'description', 'price', 'quantity', 'images', 'image_urls', 'thumbnail_urls',
-                  'product_images', 'category', 'category_name', 'seller', 'seller_name', 'seller_email', 
-                  'is_active', 'is_boosted', 'boost_expires_at', 'review_count', 'average_rating', 
+                  'primary_image_url', 'product_images', 'category', 'category_name', 'seller', 'seller_name', 
+                  'seller_email', 'is_active', 'is_boosted', 'boost_expires_at', 'review_count', 'average_rating', 
                   'recent_reviews', 'can_chat', 'existing_chat_id', 'created_at', 'updated_at']
         read_only_fields = ['id', 'seller', 'created_at', 'updated_at']
     
@@ -188,3 +187,78 @@ class BoostSerializer(serializers.ModelSerializer):
         model = Boost
         fields = ['id', 'product', 'product_name', 'seller', 'reach_type', 'duration_days', 'cost', 'starts_at', 'expires_at', 'is_paid', 'created_at']
         read_only_fields = ['id', 'seller', 'starts_at', 'created_at']
+
+
+class ProductCreateWithImagesSerializer(serializers.ModelSerializer):
+    """Serializer for creating a product with images in one API call"""
+    images = serializers.ListField(
+        child=serializers.ImageField(),
+        required=False,
+        max_length=10,
+        help_text="List of image files to upload with the product"
+    )
+    alt_texts = serializers.ListField(
+        child=serializers.CharField(max_length=255, required=False, allow_blank=True),
+        required=False,
+        help_text="Optional list of alt texts for images (same order as images)"
+    )
+    
+    # Read-only fields to return the created product with image data
+    product_images = ProductImageSerializer(many=True, read_only=True)
+    image_urls = serializers.ReadOnlyField()
+    thumbnail_urls = serializers.ReadOnlyField()
+    primary_image_url = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = Product
+        fields = ['id', 'name', 'description', 'price', 'quantity', 'category', 'images', 'alt_texts',
+                  'product_images', 'image_urls', 'thumbnail_urls', 'primary_image_url', 'is_active', 
+                  'created_at', 'updated_at']
+        read_only_fields = ['id', 'seller', 'created_at', 'updated_at']
+    
+    def validate_images(self, value):
+        """Validate all uploaded images"""
+        if value:
+            for image in value:
+                validate_image(image)
+        return value
+    
+    def validate(self, data):
+        """Validate that alt_texts length matches images length if provided"""
+        images = data.get('images', [])
+        alt_texts = data.get('alt_texts', [])
+        
+        if alt_texts and len(alt_texts) != len(images):
+            raise serializers.ValidationError(
+                "Number of alt texts must match number of images"
+            )
+        
+        return data
+    
+    def create(self, validated_data):
+        """Create product and process images in one transaction"""
+        # Extract image-related data
+        images = validated_data.pop('images', [])
+        alt_texts = validated_data.pop('alt_texts', [])
+        
+        # Set seller from request context
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            validated_data['seller'] = request.user
+        
+        # Create the product
+        product = Product.objects.create(**validated_data)
+        
+        # Process and create images if provided
+        if images:
+            from .utils import process_uploaded_images
+            created_images = process_uploaded_images(images, product)
+            
+            # Set alt texts if provided
+            if alt_texts:
+                for i, alt_text in enumerate(alt_texts):
+                    if i < len(created_images) and alt_text:
+                        created_images[i].alt_text = alt_text
+                        created_images[i].save()
+        
+        return product

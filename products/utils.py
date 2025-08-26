@@ -168,3 +168,61 @@ def get_image_dimensions(image_file):
         
     img = Image.open(image_file)
     return img.size
+
+
+def process_uploaded_images(uploaded_images, product):
+    """
+    Process multiple uploaded images and create ProductImage instances.
+    
+    Args:
+        uploaded_images: List of uploaded file objects
+        product: Product instance to associate images with
+    
+    Returns:
+        List of created ProductImage instances
+    """
+    from .models import ProductImage
+    
+    created_images = []
+    
+    for index, image_file in enumerate(uploaded_images):
+        try:
+            # Validate the image
+            validate_image(image_file)
+            
+            # Process the main image
+            processed_image = process_image(image_file)
+            
+            # Generate filename for processed image
+            filename = generate_image_filename(None, image_file.name)
+            
+            # Save the processed image
+            saved_path = default_storage.save(filename, processed_image)
+            
+            # Create thumbnail
+            thumbnail = create_thumbnail(processed_image)
+            thumbnail_filename = filename.replace('.', '_thumb.')
+            thumbnail_path = default_storage.save(thumbnail_filename, thumbnail) if thumbnail else None
+            
+            # Get image dimensions
+            width, height = get_image_dimensions(processed_image)
+            
+            # Create ProductImage instance
+            product_image = ProductImage.objects.create(
+                product=product,
+                image=saved_path,
+                thumbnail=thumbnail_path,
+                width=width,
+                height=height,
+                file_size=processed_image.size if hasattr(processed_image, 'size') else image_file.size,
+                order=index
+            )
+            
+            created_images.append(product_image)
+            
+        except Exception as e:
+            # If one image fails, continue with others but log the error
+            print(f"Failed to process image {image_file.name}: {str(e)}")
+            continue
+    
+    return created_images

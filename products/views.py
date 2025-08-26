@@ -14,7 +14,8 @@ from .serializers import (
     ProductReviewSerializer,
     BoostSerializer,
     ProductImageSerializer,
-    ProductImageUploadSerializer
+    ProductImageUploadSerializer,
+    ProductCreateWithImagesSerializer
 )
 
 
@@ -130,6 +131,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
+    parser_classes = [MultiPartParser, FormParser]  # Add this to handle file uploads
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'description', 'seller__first_name', 'seller__last_name']
     ordering_fields = ['name', 'price', 'created_at', 'updated_at']
@@ -138,10 +140,12 @@ class ProductViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         """
         Return the appropriate serializer class based on the action.
-        Use lightweight serializer for list view.
+        Use lightweight serializer for list view and special serializer for create with images.
         """
         if self.action == 'list':
             return ProductListSerializer
+        elif self.action == 'create' and 'images' in self.request.data:
+            return ProductCreateWithImagesSerializer
         return ProductSerializer
     
     def get_queryset(self):

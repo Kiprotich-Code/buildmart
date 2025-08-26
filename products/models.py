@@ -33,7 +33,8 @@ class Product(models.Model):
     description = models.TextField(blank=True, null=True)
     price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
     quantity = models.IntegerField(default=0, validators=[MinValueValidator(0)])
-    images = models.JSONField(default=list, blank=True, help_text="List of image URLs (deprecated - use ProductImage model)")
+    # Legacy field - kept for backward compatibility but deprecated
+    legacy_images = models.JSONField(default=list, blank=True, help_text="Deprecated - use ProductImage model")
     is_active = models.BooleanField(default=True)
     is_boosted = models.BooleanField(default=False)
     boost_expires_at = models.DateTimeField(blank=True, null=True)
@@ -47,6 +48,17 @@ class Product(models.Model):
         return self.name
 
     @property
+    def images(self):
+        """
+        Backward compatibility property - returns list of image URLs
+        """
+        # Priority: ProductImage objects first, then legacy_images as fallback
+        product_images = self.product_images.filter(is_active=True).order_by('order')
+        if product_images.exists():
+            return [img.image.url for img in product_images]
+        return self.legacy_images or []
+
+    @property
     def image_urls(self):
         """Get all image URLs for this product"""
         return [img.image.url for img in self.product_images.filter(is_active=True).order_by('order')]
@@ -54,12 +66,24 @@ class Product(models.Model):
     @property
     def thumbnail_urls(self):
         """Get all thumbnail URLs for this product"""
-        return [img.thumbnail.url for img in self.product_images.filter(is_active=True).order_by('order') if img.thumbnail]
+        return [img.thumbnail.url if img.thumbnail else img.image.url 
+                for img in self.product_images.filter(is_active=True).order_by('order')]
 
     @property
     def primary_image(self):
         """Get the primary (first) image for this product"""
         return self.product_images.filter(is_active=True).order_by('order').first()
+
+    @property
+    def primary_image_url(self):
+        """Get the first (primary) image URL"""
+        first_image = self.primary_image
+        if first_image:
+            return first_image.image.url
+        # Fallback to legacy images
+        if self.legacy_images:
+            return self.legacy_images[0]
+        return None
 
 
 class ProductImage(models.Model):
