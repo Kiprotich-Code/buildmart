@@ -158,11 +158,21 @@ class ProductViewSet(viewsets.ModelViewSet):
         if hasattr(self.request, 'user') and self.request.user.is_authenticated and self.request.user.is_staff:
             # Admin users can access all products including inactive ones
             pass
+        elif hasattr(self.request, 'user') and self.request.user.is_authenticated:
+            # For authenticated non-admin users
+            if self.detail:
+                # For detail views, allow access to own products (active or inactive) and all active products
+                queryset = queryset.filter(
+                    Q(seller=self.request.user) | Q(is_active=True)
+                )
+            else:
+                # For list views, filter by active status unless show_inactive=true
+                show_inactive = self.request.query_params.get('show_inactive', 'false').lower()
+                if show_inactive not in ['true', '1']:
+                    queryset = queryset.filter(is_active=True)
         else:
-            # Filter by active status (default to active only for non-admin users)
-            show_inactive = self.request.query_params.get('show_inactive', 'false').lower()
-            if show_inactive not in ['true', '1']:
-                queryset = queryset.filter(is_active=True)
+            # For anonymous users, only show active products
+            queryset = queryset.filter(is_active=True)
         
         # Filter by category
         category_id = self.request.query_params.get('category')
