@@ -8,5 +8,6 @@ router.register(r'boosts', BoostViewSet, basename='boost')
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('boosts/initiate/', BoostViewSet.as_view({'post': 'initiate_boost'}), name='boost-initiate'),
     path('webhook/flutterwave/', flutterwave_webhook, name='flutterwave_webhook'),
 ]
