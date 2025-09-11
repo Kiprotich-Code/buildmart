@@ -24,6 +24,7 @@ urlpatterns = [
     path('profile/details/', views.ProfileDetailView.as_view(), name='profile-details'),
     path('change-password/', views.ChangePasswordView.as_view(), name='change-password'),
     path('verify-email/', views.VerifyEmailView.as_view(), name='verify-email'),
+    path('resend-verification/', views.ResendVerificationEmailView.as_view(), name='resend-verification'),
     
     # Admin endpoints
     path('admin/users/', views.UserListView.as_view(), name='admin-users'),
