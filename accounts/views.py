@@ -31,8 +31,14 @@ def send_verification_email(user, request=None):
     token = default_token_generator.make_token(user)
     uid = urlsafe_base64_encode(force_bytes(user.pk))
     
-    # Create verification link (adjust URL based on your frontend)
-    verification_link = f"http://localhost:3000/verify-email/{uid}/{token}/"
+    # Get base URL from settings or request
+    if request:
+        base_url = f"{request.scheme}://{request.get_host()}"
+    else:
+        base_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+    
+    # Create verification link to match frontend route
+    verification_link = f"http://localhost:8080/auth/verify-email-confirm?uid={uid}&token={token}"
     
     subject = 'Email Verification - BuildMart'
     message = f"""

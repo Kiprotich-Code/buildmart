@@ -37,8 +37,18 @@ class CustomSMTPEmailBackend(DjangoEmailBackend):
         connection_params = {'local_hostname': self.host}
         if self.timeout is not None:
             connection_params['timeout'] = self.timeout
+        
+        # Handle SSL configuration
         if self.use_ssl:
-            connection_params['context'] = ssl.create_default_context()
+            # For SSL connections (port 465)
+            if settings.DEBUG:
+                # Create unverified SSL context for development
+                context = ssl.create_default_context()
+                context.check_hostname = False
+                context.verify_mode = ssl.CERT_NONE
+                connection_params['context'] = context
+            else:
+                connection_params['context'] = ssl.create_default_context()
             
         try:
             self.connection = self.connection_class(
@@ -49,24 +59,31 @@ class CustomSMTPEmailBackend(DjangoEmailBackend):
             # non-secure connections.
             if not self.use_ssl and self.use_tls:
                 self.connection.ehlo()
-                self.connection.starttls(context=ssl.create_default_context())
+                if settings.DEBUG:
+                    # Use unverified context for TLS in development
+                    context = ssl.create_default_context()
+                    context.check_hostname = False
+                    context.verify_mode = ssl.CERT_NONE
+                    self.connection.starttls(context=context)
+                else:
+                    self.connection.starttls(context=ssl.create_default_context())
                 self.connection.ehlo()
 
             if self.username and self.password:
                 self.connection.login(self.username, self.password)
             return True
         except (ssl.SSLError, OSError) as e:
-            if settings.DEBUG and 'certificate verify failed' in str(e):
-                # For development: create unverified SSL context
-                print(f"SSL Error: {e}")
-                print("Using unverified SSL context for development...")
+            if settings.DEBUG:
+                print(f"Email SSL Error: {e}")
+                print("Attempting connection with relaxed SSL verification...")
                 
-                # Create unverified context
+                # For development: create unverified SSL context
                 context = ssl.create_default_context()
                 context.check_hostname = False
                 context.verify_mode = ssl.CERT_NONE
                 
                 try:
+                    connection_params['context'] = context
                     self.connection = self.connection_class(
                         self.host, self.port, **connection_params
                     )
@@ -78,9 +95,10 @@ class CustomSMTPEmailBackend(DjangoEmailBackend):
 
                     if self.username and self.password:
                         self.connection.login(self.username, self.password)
+                    print("✅ Email connection successful with relaxed SSL")
                     return True
                 except Exception as e2:
-                    print(f"Failed even with unverified SSL: {e2}")
+                    print(f"❌ Failed even with relaxed SSL: {e2}")
                     raise e2
             else:
                 raise e
