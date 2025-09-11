@@ -2,6 +2,13 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model, authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.encoding import force_bytes, force_str
+from django.core.mail import send_mail
+from django.conf import settings
+from django.urls import reverse
+from allauth.socialaccount.models import SocialAccount
 from .models import Profile, Seller
 
 User = get_user_model()
@@ -164,3 +171,167 @@ class TokenSerializer(serializers.Serializer):
     access = serializers.CharField()
     refresh = serializers.CharField()
     user = UserSerializer()
+
+
+class PasswordResetSerializer(serializers.Serializer):
+    """Serializer for password reset request"""
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        """Check if user with this email exists"""
+        try:
+            user = User.objects.get(email__iexact=value)
+            if not user.is_active:
+                raise serializers.ValidationError("This account is deactivated.")
+        except User.DoesNotExist:
+            raise serializers.ValidationError("No user found with this email address.")
+        return value.lower()
+
+    def save(self):
+        """Send password reset email"""
+        email = self.validated_data['email']
+        user = User.objects.get(email__iexact=email)
+        
+        # Generate password reset token
+        token = default_token_generator.make_token(user)
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        
+        # Create reset link (you can customize this URL based on your frontend)
+        reset_link = f"http://localhost:3000/reset-password/{uid}/{token}/"
+        
+        # Send email
+        subject = 'Password Reset - BuildMart'
+        message = f"""
+        Hi {user.first_name or user.email},
+        
+        You requested a password reset for your BuildMart account.
+        
+        Click the link below to reset your password:
+        {reset_link}
+        
+        If you didn't request this reset, please ignore this email.
+        
+        This link will expire in 1 hour.
+        
+        Best regards,
+        BuildMart Team
+        """
+        
+        send_mail(
+            subject,
+            message,
+            settings.DEFAULT_FROM_EMAIL,
+            [user.email],
+            fail_silently=False,
+        )
+        
+        return user
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    """Serializer for password reset confirmation"""
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    new_password = serializers.CharField(write_only=True, validators=[validate_password])
+    new_password_confirm = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        """Validate token and passwords"""
+        try:
+            uid = force_str(urlsafe_base64_decode(attrs['uid']))
+            user = User.objects.get(pk=uid)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            raise serializers.ValidationError("Invalid user ID.")
+
+        if not default_token_generator.check_token(user, attrs['token']):
+            raise serializers.ValidationError("Invalid or expired token.")
+
+        if attrs['new_password'] != attrs['new_password_confirm']:
+            raise serializers.ValidationError("Password fields didn't match.")
+
+        attrs['user'] = user
+        return attrs
+
+    def save(self):
+        """Reset the password"""
+        user = self.validated_data['user']
+        user.set_password(self.validated_data['new_password'])
+        user.save()
+        return user
+
+
+class GoogleOAuthSerializer(serializers.Serializer):
+    """Serializer for Google OAuth authentication"""
+    access_token = serializers.CharField()
+    
+    def validate_access_token(self, access_token):
+        """Validate Google access token"""
+        import requests
+        
+        # Verify token with Google
+        google_user_info_url = f'https://www.googleapis.com/oauth2/v2/userinfo?access_token={access_token}'
+        response = requests.get(google_user_info_url)
+        
+        if response.status_code != 200:
+            raise serializers.ValidationError("Invalid access token.")
+            
+        user_data = response.json()
+        
+        if 'email' not in user_data:
+            raise serializers.ValidationError("Email not found in Google account.")
+            
+        return {
+            'access_token': access_token,
+            'user_data': user_data
+        }
+    
+    def create_or_get_user(self, validated_data):
+        """Create or get user from Google OAuth data"""
+        google_data = validated_data['access_token']
+        user_data = google_data['user_data']
+        
+        email = user_data['email']
+        first_name = user_data.get('given_name', '')
+        last_name = user_data.get('family_name', '')
+        google_id = user_data.get('id')
+        
+        try:
+            # Check if user already exists
+            user = User.objects.get(email__iexact=email)
+            
+            # Check if this Google account is already linked
+            try:
+                social_account = SocialAccount.objects.get(
+                    user=user,
+                    provider='google',
+                    uid=google_id
+                )
+            except SocialAccount.DoesNotExist:
+                # Link Google account to existing user
+                SocialAccount.objects.create(
+                    user=user,
+                    provider='google',
+                    uid=google_id,
+                    extra_data=user_data
+                )
+                
+        except User.DoesNotExist:
+            # Create new user
+            user = User.objects.create_user(
+                email=email,
+                username=email,
+                first_name=first_name,
+                last_name=last_name,
+                is_email_verified=True,  # Google emails are verified
+                role='user'
+            )
+            
+            # Create social account
+            SocialAccount.objects.create(
+                user=user,
+                provider='google',
+                uid=google_id,
+                extra_data=user_data
+            )
+        
+        return user

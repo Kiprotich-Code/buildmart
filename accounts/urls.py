@@ -12,6 +12,13 @@ urlpatterns = [
     path('logout/', views.LogoutView.as_view(), name='logout'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     
+    # Password reset endpoints
+    path('password-reset/', views.PasswordResetView.as_view(), name='password-reset'),
+    path('password-reset-confirm/', views.PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
+    
+    # Google OAuth endpoint
+    path('auth/google/', views.GoogleOAuthView.as_view(), name='google-oauth'),
+    
     # User management
     path('profile/', views.UserProfileView.as_view(), name='user-profile'),
     path('profile/details/', views.ProfileDetailView.as_view(), name='profile-details'),

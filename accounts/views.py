@@ -9,7 +9,8 @@ from django.shortcuts import get_object_or_404
 from .serializers import (
     UserRegistrationSerializer, LoginSerializer, UserSerializer, 
     ProfileSerializer, SellerSerializer, SellerRegistrationSerializer,
-    PasswordChangeSerializer, TokenSerializer
+    PasswordChangeSerializer, TokenSerializer, PasswordResetSerializer,
+    PasswordResetConfirmSerializer, GoogleOAuthSerializer
 )
 from .models import Profile, Seller
 from .permissions import (
@@ -322,3 +323,59 @@ class VerifyEmailView(APIView):
         # Verify token and mark user as verified
         return Response({'message': 'Email verification endpoint - implement as needed'}, 
                        status=status.HTTP_200_OK)
+
+
+class PasswordResetView(APIView):
+    """Password reset request endpoint"""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = PasswordResetSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                'message': 'Password reset email sent successfully. Please check your email.'
+            }, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class PasswordResetConfirmView(APIView):
+    """Password reset confirmation endpoint"""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.save()
+            return Response({
+                'message': 'Password reset successful. You can now login with your new password.'
+            }, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class GoogleOAuthView(APIView):
+    """Google OAuth authentication endpoint"""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = GoogleOAuthSerializer(data=request.data)
+        if serializer.is_valid():
+            try:
+                user = serializer.create_or_get_user(serializer.validated_data)
+                refresh = RefreshToken.for_user(user)
+                
+                return Response({
+                    'user': UserSerializer(user).data,
+                    'tokens': {
+                        'access': str(refresh.access_token),
+                        'refresh': str(refresh),
+                    },
+                    'message': 'Google authentication successful'
+                }, status=status.HTTP_200_OK)
+                
+            except Exception as e:
+                return Response({
+                    'error': 'Authentication failed',
+                    'details': str(e)
+                }, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
