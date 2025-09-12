@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'payments',
     'activities',
     'reports',
+    'notifications',
 ]
 
 MIDDLEWARE = [
@@ -257,6 +258,13 @@ SIMPLE_JWT = {
 
 
 CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:8080",
+    "http://localhost:8081",
+    "http://127.0.0.1:8080",
+    "http://127.0.0.1:8081",
+]
 
 # Channels (WebSocket) Configuration
 ASGI_APPLICATION = 'buildmart.asgi.application'

@@ -505,3 +505,105 @@ class GoogleOAuthView(APIView):
                     'details': str(e)
                 }, status=status.HTTP_400_BAD_REQUEST)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UserListView(APIView):
+    """List all users for admin purposes"""
+    permission_classes = [AllowAny]  # Temporarily allow any for testing
+    
+    def get(self, request):
+        try:
+            users = User.objects.all().select_related('profile')
+            user_data = []
+            
+            for user in users:
+                # Determine user role
+                role = 'user'  # default
+                if user.is_superuser:
+                    role = 'admin'
+                elif hasattr(user, 'seller'):
+                    role = 'seller'
+                elif hasattr(user, 'profile'):
+                    # Check if profile indicates seller
+                    profile = user.profile
+                    if hasattr(profile, 'user_type') and profile.user_type == 'seller':
+                        role = 'seller'
+                
+                user_data.append({
+                    'id': str(user.id),
+                    'email': user.email,
+                    'username': user.username or user.email.split('@')[0],
+                    'role': role,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'is_active': user.is_active,
+                    'date_joined': user.date_joined,
+                })
+            
+            return Response(user_data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'error': 'Failed to fetch users',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class UserDetailView(APIView):
+    """Get, update, or delete a specific user"""
+    permission_classes = [AllowAny]  # Temporarily allow any for testing
+    
+    def get(self, request, pk):
+        try:
+            user = get_object_or_404(User, pk=pk)
+            return Response(UserSerializer(user).data, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({
+                'error': 'User not found',
+                'details': str(e)
+            }, status=status.HTTP_404_NOT_FOUND)
+
+
+class ProfileListView(APIView):
+    """List all user profiles"""
+    permission_classes = [AllowAny]  # Temporarily allow any for testing
+    
+    def get(self, request):
+        try:
+            profiles = Profile.objects.all().select_related('user')
+            return Response(ProfileSerializer(profiles, many=True).data, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({
+                'error': 'Failed to fetch profiles',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class UserStatsView(APIView):
+    """Get user statistics for admin dashboard"""
+    permission_classes = [AllowAny]  # Temporarily allow any for testing
+    
+    def get(self, request):
+        try:
+            total_users = User.objects.count()
+            active_users = User.objects.filter(is_active=True).count()
+            admin_users = User.objects.filter(is_superuser=True).count()
+            
+            # Count sellers
+            seller_count = 0
+            if hasattr(User, 'seller'):
+                seller_count = User.objects.filter(seller__isnull=False).count()
+            
+            return Response({
+                'total_users': total_users,
+                'active_users': active_users,
+                'admin_users': admin_users,
+                'seller_users': seller_count,
+                'regular_users': total_users - admin_users - seller_count,
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'error': 'Failed to fetch user stats',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

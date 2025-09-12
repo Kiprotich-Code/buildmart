@@ -177,6 +177,7 @@ class Flag(models.Model):
     ]
     
     STATUS_CHOICES = [
+        ('pending', 'Pending'),
         ('active', 'Active'),
         ('resolved', 'Resolved'),
         ('ignored', 'Ignored'),
