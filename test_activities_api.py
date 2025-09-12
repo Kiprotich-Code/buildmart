@@ -14,9 +14,7 @@ def test_admin_activities():
     print("Testing Admin Activities Endpoint")
     print("=" * 50)
     
-    # First, get a JWT token (you'll need to adjust this based on your auth system)
-    # For now, let's test without auth to see if the endpoint is working
-    
+
     url = f"{BASE_URL}/api/activities/admin/activities/"
     try:
         response = requests.get(url)
