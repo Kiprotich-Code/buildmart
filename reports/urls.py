@@ -13,20 +13,3 @@ app_name = 'reports'
 urlpatterns = [
     path('api/', include(router.urls)),
 ]
-
-# The resulting URLs will be:
-# /api/reports/ - List/Create reports
-# /api/reports/{id}/ - Retrieve/Update/Delete specific report
-# /api/reports/my_reports/ - Get current user's reports
-# /api/reports/pending/ - Get pending reports (admin only)
-# /api/reports/{id}/assign/ - Assign report to admin
-# 
-# /api/flags/ - List/Create flags
-# /api/flags/{id}/ - Retrieve/Update/Delete specific flag
-# /api/flags/active/ - Get active flags
-# /api/flags/critical/ - Get critical flags
-# /api/flags/requires_review/ - Get flags requiring manual review
-#
-# /api/stats/dashboard/ - Get dashboard statistics
-# /api/stats/trends/ - Get trends data
-# /api/stats/summary/ - Get summary statistics

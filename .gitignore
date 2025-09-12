@@ -5,3 +5,4 @@ venv
 fake-tests
 .env
 test_api.*
+media/*
