@@ -10,6 +10,7 @@ urlpatterns = [
     path('api/products/', include('products.urls')),
     path('api/chats/', include('chats.urls')),
     path('api/payments/', include('payments.urls')),
+    path('api/activities/', include('activities.urls')),
     path('accounts/', include('allauth.urls')),  # Django-allauth URLs
 ]
 

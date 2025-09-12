@@ -207,6 +207,20 @@ def flutterwave_webhook(request):
                 boost.end_date = boost.start_date + timedelta(days=boost.plan.duration_days)
             boost.is_active = True
             boost.save()
+            
+            # Log the payment processing activity
+            from activities.signals import log_payment_processed
+            log_payment_processed(
+                user=boost.user,
+                amount=boost.plan.price,
+                payment_type='Boost Payment',
+                transaction_id=tx_ref,
+                metadata={
+                    'boost_plan': boost.plan.name,
+                    'product_name': boost.listing.name,
+                    'duration_days': boost.plan.duration_days
+                }
+            )
         else:
             boost.payment_status = 'failed'
             boost.save()

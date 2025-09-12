@@ -233,6 +233,20 @@ class ProductViewSet(viewsets.ModelViewSet):
                 from rest_framework.exceptions import PermissionDenied
                 raise PermissionDenied("You can only modify your own products.")
     
+    def retrieve(self, request, *args, **kwargs):
+        """
+        Retrieve a product and log the view activity for buyers.
+        """
+        instance = self.get_object()
+        
+        # Log product view for buyers (users with role='user')
+        if request.user.is_authenticated and request.user.role == 'user':
+            from activities.signals import log_product_view
+            log_product_view(request.user, instance)
+        
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+    
     @action(detail=False, methods=['get'])
     def featured(self, request):
         """
