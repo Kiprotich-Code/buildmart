@@ -152,7 +152,11 @@ class ProductViewSet(viewsets.ModelViewSet):
         """
         Filter queryset based on query parameters.
         """
-        queryset = Product.objects.select_related('category', 'seller').prefetch_related('reviews')
+        queryset = Product.objects.select_related(
+            'category', 
+            'seller', 
+            'seller__seller'  # Include seller profile for seller_details
+        ).prefetch_related('reviews', 'product_images')
         
         # For admin users, allow access to inactive products for modification operations
         if hasattr(self.request, 'user') and self.request.user.is_authenticated and self.request.user.is_staff:

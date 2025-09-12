@@ -3,6 +3,45 @@ from .models import Category, Product, ProductReview, Boost, ProductImage
 from .utils import validate_image
 
 
+class SellerDetailSerializer(serializers.Serializer):
+    """Serializer for seller details in product API"""
+    id = serializers.UUIDField(read_only=True)
+    email = serializers.EmailField(read_only=True)
+    shop_name = serializers.CharField(read_only=True)
+    shop_description = serializers.CharField(read_only=True)
+    verification_status = serializers.CharField(read_only=True)
+    is_verified = serializers.BooleanField(read_only=True)
+    state = serializers.CharField(read_only=True)
+    city = serializers.CharField(read_only=True)
+    address = serializers.CharField(read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    
+    def to_representation(self, instance):
+        """
+        Convert the seller user instance to seller details
+        """
+        if not instance:
+            return None
+        
+        # If instance is a User, get the seller profile
+        if hasattr(instance, 'seller'):
+            seller = instance.seller
+            return {
+                'id': str(seller.id),
+                'email': instance.email,
+                'shop_name': seller.shop_name,
+                'shop_description': seller.shop_description,
+                'verification_status': seller.verification_status,
+                'is_verified': seller.is_verified,
+                'state': seller.state,
+                'city': seller.city,
+                'address': seller.address,
+                'created_at': seller.created_at,
+            }
+        
+        return None
+
+
 class CategorySerializer(serializers.ModelSerializer):
     product_count = serializers.SerializerMethodField()
     
@@ -78,6 +117,7 @@ class ProductListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for listing products"""
     category_name = serializers.CharField(source='category.name', read_only=True)
     seller_name = serializers.CharField(source='seller.get_full_name', read_only=True)
+    seller_details = SellerDetailSerializer(source='seller', read_only=True)
     review_count = serializers.SerializerMethodField()
     average_rating = serializers.SerializerMethodField()
     images = serializers.ReadOnlyField()  # Uses the @property method
@@ -88,7 +128,7 @@ class ProductListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = ['id', 'name', 'price', 'quantity', 'images', 'image_urls', 'thumbnail_urls', 'primary_image_url', 
-                  'category', 'category_name', 'seller', 'seller_name', 'is_active', 'is_boosted', 
+                  'category', 'category_name', 'seller', 'seller_name', 'seller_details', 'is_active', 'is_boosted', 
                   'review_count', 'average_rating', 'created_at']
     
     def get_review_count(self, obj):
@@ -105,6 +145,7 @@ class ProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
     seller_name = serializers.CharField(source='seller.get_full_name', read_only=True)
     seller_email = serializers.CharField(source='seller.email', read_only=True)
+    seller_details = SellerDetailSerializer(source='seller', read_only=True)
     review_count = serializers.SerializerMethodField()
     average_rating = serializers.SerializerMethodField()
     recent_reviews = serializers.SerializerMethodField()
@@ -120,7 +161,7 @@ class ProductSerializer(serializers.ModelSerializer):
         model = Product
         fields = ['id', 'name', 'description', 'price', 'quantity', 'images', 'image_urls', 'thumbnail_urls',
                   'primary_image_url', 'product_images', 'category', 'category_name', 'seller', 'seller_name', 
-                  'seller_email', 'is_active', 'is_boosted', 'boost_expires_at', 'review_count', 'average_rating', 
+                  'seller_email', 'seller_details', 'is_active', 'is_boosted', 'boost_expires_at', 'review_count', 'average_rating', 
                   'recent_reviews', 'can_chat', 'existing_chat_id', 'created_at', 'updated_at']
         read_only_fields = ['id', 'seller', 'created_at', 'updated_at']
     
