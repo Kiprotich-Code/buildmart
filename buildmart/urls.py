@@ -11,6 +11,7 @@ urlpatterns = [
     path('api/chats/', include('chats.urls')),
     path('api/payments/', include('payments.urls')),
     path('api/activities/', include('activities.urls')),
+    path('api/reports/', include('reports.urls')),
     path('accounts/', include('allauth.urls')),  # Django-allauth URLs
 ]
 
