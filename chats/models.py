@@ -50,3 +50,75 @@ class Message(models.Model):
 
     def __str__(self):
         return f"Message in {self.chat.id} by {self.sender.email}"
+
+
+class ProductQuestion(models.Model):
+    """Model to store questions about products"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    product = models.ForeignKey('products.Product', on_delete=models.CASCADE, related_name='questions')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='asked_questions')
+    question = models.TextField()
+    is_answered = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'product_questions'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Question by {self.user.email} about {self.product.name}"
+
+    @property
+    def answer_count(self):
+        return self.answers.count()
+
+    @property
+    def latest_answer(self):
+        return self.answers.order_by('-created_at').first()
+
+
+class ProductAnswer(models.Model):
+    """Model to store answers to product questions"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    question = models.ForeignKey(ProductQuestion, on_delete=models.CASCADE, related_name='answers')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='provided_answers')
+    answer = models.TextField()
+    is_seller_answer = models.BooleanField(default=False)  # True if answered by product seller
+    is_verified = models.BooleanField(default=False)  # For highlighting verified answers
+    helpful_count = models.PositiveIntegerField(default=0)  # Users can mark answers as helpful
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'product_answers'
+        ordering = ['-is_seller_answer', '-helpful_count', '-created_at']  # Seller answers first, then by helpfulness
+
+    def __str__(self):
+        return f"Answer by {self.user.email} to question {self.question.id}"
+
+    def save(self, *args, **kwargs):
+        # Check if this answer is from the product seller
+        if self.question.product.seller == self.user:
+            self.is_seller_answer = True
+        
+        super().save(*args, **kwargs)
+        
+        # Update question's is_answered status
+        self.question.is_answered = True
+        self.question.save(update_fields=['is_answered'])
+
+
+class AnswerHelpful(models.Model):
+    """Model to track which users found answers helpful"""
+    answer = models.ForeignKey(ProductAnswer, on_delete=models.CASCADE, related_name='helpful_votes')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='helpful_answers')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'answer_helpful'
+        unique_together = ['answer', 'user']  # One vote per user per answer
+
+    def __str__(self):
+        return f"{self.user.email} found answer {self.answer.id} helpful"

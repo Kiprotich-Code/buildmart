@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Chat, Message
+from .models import Chat, Message, ProductQuestion, ProductAnswer, AnswerHelpful
 from products.models import Product
 
 User = get_user_model()
@@ -139,3 +139,125 @@ class MessageUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Message
         fields = ['is_read']
+
+
+# Q&A Serializers
+
+class ProductAnswerSerializer(serializers.ModelSerializer):
+    """Serializer for product answers"""
+    user = UserBasicSerializer(read_only=True)
+    user_name = serializers.SerializerMethodField()
+    is_helpful = serializers.SerializerMethodField()
+    time_since = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ProductAnswer
+        fields = [
+            'id', 'user', 'user_name', 'answer', 'is_seller_answer', 
+            'is_verified', 'helpful_count', 'is_helpful', 'time_since', 'created_at'
+        ]
+        read_only_fields = ['id', 'user', 'is_seller_answer', 'is_verified', 'helpful_count', 'created_at']
+    
+    def get_user_name(self, obj):
+        """Get display name for the user"""
+        if obj.user.first_name and obj.user.last_name:
+            return f"{obj.user.first_name} {obj.user.last_name}"
+        elif obj.user.username:
+            return obj.user.username
+        else:
+            return obj.user.email.split('@')[0]
+    
+    def get_is_helpful(self, obj):
+        """Check if current user marked this answer as helpful"""
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return AnswerHelpful.objects.filter(answer=obj, user=request.user).exists()
+        return False
+    
+    def get_time_since(self, obj):
+        """Get human-readable time since answer was posted"""
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        now = timezone.now()
+        diff = now - obj.created_at
+        
+        if diff.days > 0:
+            return f"{diff.days} day{'s' if diff.days > 1 else ''} ago"
+        elif diff.seconds >= 3600:
+            hours = diff.seconds // 3600
+            return f"{hours} hour{'s' if hours > 1 else ''} ago"
+        elif diff.seconds >= 60:
+            minutes = diff.seconds // 60
+            return f"{minutes} minute{'s' if minutes > 1 else ''} ago"
+        else:
+            return "Just now"
+
+
+class ProductQuestionSerializer(serializers.ModelSerializer):
+    """Serializer for product questions"""
+    user = UserBasicSerializer(read_only=True)
+    user_name = serializers.SerializerMethodField()
+    answers = ProductAnswerSerializer(many=True, read_only=True)
+    answer_count = serializers.ReadOnlyField()
+    time_since = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ProductQuestion
+        fields = [
+            'id', 'user', 'user_name', 'question', 'is_answered', 
+            'answer_count', 'answers', 'time_since', 'created_at'
+        ]
+        read_only_fields = ['id', 'user', 'is_answered', 'answer_count', 'created_at']
+    
+    def get_user_name(self, obj):
+        """Get display name for the user"""
+        if obj.user.first_name and obj.user.last_name:
+            return f"{obj.user.first_name} {obj.user.last_name}"
+        elif obj.user.username:
+            return obj.user.username
+        else:
+            return obj.user.email.split('@')[0]
+    
+    def get_time_since(self, obj):
+        """Get human-readable time since question was asked"""
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        now = timezone.now()
+        diff = now - obj.created_at
+        
+        if diff.days > 0:
+            return f"{diff.days} day{'s' if diff.days > 1 else ''} ago"
+        elif diff.seconds >= 3600:
+            hours = diff.seconds // 3600
+            return f"{hours} hour{'s' if hours > 1 else ''} ago"
+        elif diff.seconds >= 60:
+            minutes = diff.seconds // 60
+            return f"{minutes} minute{'s' if minutes > 1 else ''} ago"
+        else:
+            return "Just now"
+
+
+class ProductQuestionCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating product questions"""
+    
+    class Meta:
+        model = ProductQuestion
+        fields = ['product', 'question']
+    
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class ProductAnswerCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating product answers"""
+    
+    class Meta:
+        model = ProductAnswer
+        fields = ['question', 'answer']
+    
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)

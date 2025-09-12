@@ -10,12 +10,16 @@ from asgiref.sync import async_to_sync
 from datetime import datetime, timedelta
 from django.db.models.functions import TruncDate
 
-from .models import Chat, Message
+from .models import Chat, Message, ProductQuestion, ProductAnswer, AnswerHelpful
 from .serializers import (
     ChatSerializer, 
     ChatCreateSerializer, 
     MessageSerializer,
-    MessageUpdateSerializer
+    MessageUpdateSerializer,
+    ProductQuestionSerializer,
+    ProductQuestionCreateSerializer,
+    ProductAnswerSerializer,
+    ProductAnswerCreateSerializer
 )
 from products.models import Product
 
@@ -615,3 +619,354 @@ class MessageViewSet(viewsets.ModelViewSet):
             )
         
         return super().destroy(request, *args, **kwargs)
+
+
+# Q&A ViewSets
+
+class ProductQuestionViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing product questions
+    """
+    serializer_class = ProductQuestionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        """Get questions for products, optionally filtered by product"""
+        queryset = ProductQuestion.objects.filter(is_active=True).select_related(
+            'user', 'product'
+        ).prefetch_related(
+            Prefetch(
+                'answers',
+                queryset=ProductAnswer.objects.select_related('user').order_by(
+                    '-is_seller_answer', '-helpful_count', '-created_at'
+                )
+            )
+        ).order_by('-created_at')
+        
+        # Filter by product if specified
+        product_id = self.request.query_params.get('product_id')
+        if product_id:
+            queryset = queryset.filter(product_id=product_id)
+        
+        return queryset
+    
+    def get_serializer_class(self):
+        """Return appropriate serializer based on action"""
+        if self.action == 'create':
+            return ProductQuestionCreateSerializer
+        return ProductQuestionSerializer
+    
+    def create(self, request, *args, **kwargs):
+        """Create a new product question"""
+        serializer = self.get_serializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        question = serializer.save()
+        
+        # Return the question with full details
+        response_serializer = ProductQuestionSerializer(question, context={'request': request})
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+    
+    @action(detail=False, methods=['get'])
+    def by_product(self, request):
+        """Get all questions for a specific product"""
+        product_id = request.query_params.get('product_id')
+        if not product_id:
+            return Response(
+                {'error': 'product_id parameter is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Verify product exists
+        try:
+            product = Product.objects.get(id=product_id, is_active=True)
+        except Product.DoesNotExist:
+            return Response(
+                {'error': 'Product not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        questions = self.get_queryset().filter(product=product)
+        serializer = self.get_serializer(questions, many=True)
+        
+        return Response({
+            'product': {
+                'id': str(product.id),
+                'name': product.name
+            },
+            'questions': serializer.data,
+            'total_questions': questions.count()
+        })
+
+
+class ProductAnswerViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing product answers
+    """
+    serializer_class = ProductAnswerSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        """Get answers for questions"""
+        return ProductAnswer.objects.select_related(
+            'user', 'question', 'question__product'
+        ).order_by('-is_seller_answer', '-helpful_count', '-created_at')
+    
+    def get_serializer_class(self):
+        """Return appropriate serializer based on action"""
+        if self.action == 'create':
+            return ProductAnswerCreateSerializer
+        return ProductAnswerSerializer
+    
+    def create(self, request, *args, **kwargs):
+        """Create a new answer to a product question"""
+        serializer = self.get_serializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        answer = serializer.save()
+        
+        # Return the answer with full details
+        response_serializer = ProductAnswerSerializer(answer, context={'request': request})
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+    
+    @action(detail=True, methods=['post'])
+    def mark_helpful(self, request, pk=None):
+        """Mark an answer as helpful"""
+        answer = self.get_object()
+        user = request.user
+        
+        # Check if user already marked this answer as helpful
+        helpful_vote, created = AnswerHelpful.objects.get_or_create(
+            answer=answer,
+            user=user
+        )
+        
+        if created:
+            # Update helpful count
+            answer.helpful_count = F('helpful_count') + 1
+            answer.save(update_fields=['helpful_count'])
+            answer.refresh_from_db()
+            
+            return Response({
+                'message': 'Answer marked as helpful',
+                'helpful_count': answer.helpful_count
+            })
+        else:
+            return Response({
+                'message': 'You have already marked this answer as helpful',
+                'helpful_count': answer.helpful_count
+            })
+    
+    @action(detail=True, methods=['delete'])
+    def remove_helpful(self, request, pk=None):
+        """Remove helpful mark from an answer"""
+        answer = self.get_object()
+        user = request.user
+        
+        try:
+            helpful_vote = AnswerHelpful.objects.get(answer=answer, user=user)
+            helpful_vote.delete()
+            
+            # Update helpful count
+            answer.helpful_count = F('helpful_count') - 1
+            answer.save(update_fields=['helpful_count'])
+            answer.refresh_from_db()
+            
+            return Response({
+                'message': 'Helpful mark removed',
+                'helpful_count': answer.helpful_count
+            })
+        except AnswerHelpful.DoesNotExist:
+            return Response({
+                'message': 'You have not marked this answer as helpful',
+                'helpful_count': answer.helpful_count
+            })
+
+
+# Q&A ViewSets
+
+class ProductQuestionViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing product questions
+    """
+    serializer_class = ProductQuestionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        """Get questions for products, optionally filtered by product"""
+        queryset = ProductQuestion.objects.filter(is_active=True).select_related(
+            'user', 'product'
+        ).prefetch_related(
+            Prefetch(
+                'answers',
+                queryset=ProductAnswer.objects.select_related('user').order_by(
+                    '-is_seller_answer', '-helpful_count', '-created_at'
+                )
+            )
+        ).order_by('-created_at')
+        
+        # Filter by product if specified
+        product_id = self.request.query_params.get('product_id')
+        if product_id:
+            queryset = queryset.filter(product_id=product_id)
+        
+        return queryset
+    
+    def get_serializer_class(self):
+        """Return appropriate serializer based on action"""
+        if self.action == 'create':
+            return ProductQuestionCreateSerializer
+        return ProductQuestionSerializer
+    
+    def create(self, request, *args, **kwargs):
+        """Create a new product question"""
+        serializer = self.get_serializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        question = serializer.save()
+        
+        # Return the question with full details
+        response_serializer = ProductQuestionSerializer(question, context={'request': request})
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+    
+    @action(detail=False, methods=['get'])
+    def by_product(self, request):
+        """Get all questions for a specific product"""
+        product_id = request.query_params.get('product_id')
+        if not product_id:
+            return Response(
+                {'error': 'product_id parameter is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Verify product exists
+        try:
+            product = Product.objects.get(id=product_id, is_active=True)
+        except Product.DoesNotExist:
+            return Response(
+                {'error': 'Product not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        questions = self.get_queryset().filter(product=product)
+        serializer = self.get_serializer(questions, many=True)
+        
+        return Response({
+            'product': {
+                'id': str(product.id),
+                'name': product.name
+            },
+            'questions': serializer.data,
+            'total_questions': questions.count()
+        })
+
+
+class ProductAnswerViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing product answers
+    """
+    serializer_class = ProductAnswerSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        """Get answers for questions"""
+        return ProductAnswer.objects.select_related(
+            'user', 'question', 'question__product'
+        ).order_by('-is_seller_answer', '-helpful_count', '-created_at')
+    
+    def get_serializer_class(self):
+        """Return appropriate serializer based on action"""
+        if self.action == 'create':
+            return ProductAnswerCreateSerializer
+        return ProductAnswerSerializer
+    
+    def create(self, request, *args, **kwargs):
+        """Create a new answer to a product question"""
+        serializer = self.get_serializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        answer = serializer.save()
+        
+        # Return the answer with full details
+        response_serializer = ProductAnswerSerializer(answer, context={'request': request})
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+    
+    @action(detail=True, methods=['post'])
+    def mark_helpful(self, request, pk=None):
+        """Mark an answer as helpful"""
+        answer = self.get_object()
+        user = request.user
+        
+        # Check if user already marked this answer as helpful
+        helpful_vote, created = AnswerHelpful.objects.get_or_create(
+            answer=answer,
+            user=user
+        )
+        
+        if created:
+            # Update helpful count
+            answer.helpful_count = F('helpful_count') + 1
+            answer.save(update_fields=['helpful_count'])
+            answer.refresh_from_db()
+            
+            return Response({
+                'message': 'Answer marked as helpful',
+                'helpful_count': answer.helpful_count
+            })
+        else:
+            return Response({
+                'message': 'You have already marked this answer as helpful',
+                'helpful_count': answer.helpful_count
+            })
+    
+    @action(detail=True, methods=['delete'])
+    def remove_helpful(self, request, pk=None):
+        """Remove helpful mark from an answer"""
+        answer = self.get_object()
+        user = request.user
+        
+        try:
+            helpful_vote = AnswerHelpful.objects.get(answer=answer, user=user)
+            helpful_vote.delete()
+            
+            # Update helpful count
+            answer.helpful_count = F('helpful_count') - 1
+            answer.save(update_fields=['helpful_count'])
+            answer.refresh_from_db()
+            
+            return Response({
+                'message': 'Helpful mark removed',
+                'helpful_count': answer.helpful_count
+            })
+        except AnswerHelpful.DoesNotExist:
+            return Response({
+                'message': 'You have not marked this answer as helpful',
+                'helpful_count': answer.helpful_count
+            })
+    
+    @action(detail=False, methods=['get'])
+    def by_question(self, request):
+        """Get all answers for a specific question"""
+        question_id = request.query_params.get('question_id')
+        if not question_id:
+            return Response(
+                {'error': 'question_id parameter is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            question = ProductQuestion.objects.get(id=question_id, is_active=True)
+        except ProductQuestion.DoesNotExist:
+            return Response(
+                {'error': 'Question not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        answers = self.get_queryset().filter(question=question)
+        serializer = self.get_serializer(answers, many=True)
+        
+        return Response({
+            'question': {
+                'id': str(question.id),
+                'question': question.question,
+                'user_name': question.user.get_full_name() or question.user.username
+            },
+            'answers': serializer.data,
+            'total_answers': answers.count()
+        })
