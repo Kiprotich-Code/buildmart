@@ -218,7 +218,7 @@ class ProductReviewSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductReview
         fields = ['id', 'product', 'user', 'user_name', 'rating', 'comment', 'is_verified_purchase', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'user', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'product', 'user', 'user_name', 'is_verified_purchase', 'created_at', 'updated_at']
 
 
 class BoostSerializer(serializers.ModelSerializer):

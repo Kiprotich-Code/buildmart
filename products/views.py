@@ -323,6 +323,131 @@ class ProductViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def add_review(self, request, pk=None):
+        """
+        Add a review for a specific product.
+        POST /api/products/products/{id}/add_review/
+        
+        Request body:
+        {
+            "rating": 5,
+            "comment": "Great product!"
+        }
+        """
+        product = self.get_object()
+        
+        # Check if user is trying to review their own product
+        if request.user == product.seller:
+            return Response(
+                {'error': 'You cannot review your own product'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if product is active
+        if not product.is_active:
+            return Response(
+                {'error': 'Cannot review an inactive product'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if user has already reviewed this product
+        existing_review = ProductReview.objects.filter(
+            product=product, 
+            user=request.user
+        ).first()
+        
+        if existing_review:
+            return Response(
+                {'error': 'You have already reviewed this product'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create the review
+        serializer = ProductReviewSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(product=product, user=request.user)
+            
+            # Return the created review
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['put', 'patch'], permission_classes=[IsAuthenticated])
+    def update_review(self, request, pk=None):
+        """
+        Update user's existing review for a specific product.
+        PUT/PATCH /api/products/products/{id}/update_review/
+        
+        Request body:
+        {
+            "rating": 4,
+            "comment": "Updated review comment"
+        }
+        """
+        product = self.get_object()
+        
+        # Find user's existing review
+        try:
+            review = ProductReview.objects.get(product=product, user=request.user)
+        except ProductReview.DoesNotExist:
+            return Response(
+                {'error': 'You have not reviewed this product yet'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Update the review
+        partial = request.method == 'PATCH'
+        serializer = ProductReviewSerializer(review, data=request.data, partial=partial)
+        
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['delete'], permission_classes=[IsAuthenticated])
+    def delete_review(self, request, pk=None):
+        """
+        Delete user's existing review for a specific product.
+        DELETE /api/products/products/{id}/delete_review/
+        """
+        product = self.get_object()
+        
+        # Find user's existing review
+        try:
+            review = ProductReview.objects.get(product=product, user=request.user)
+        except ProductReview.DoesNotExist:
+            return Response(
+                {'error': 'You have not reviewed this product yet'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Delete the review
+        review.delete()
+        return Response(
+            {'message': 'Review deleted successfully'}, 
+            status=status.HTTP_204_NO_CONTENT
+        )
+    
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
+    def my_review(self, request, pk=None):
+        """
+        Get current user's review for a specific product.
+        GET /api/products/products/{id}/my_review/
+        """
+        product = self.get_object()
+        
+        try:
+            review = ProductReview.objects.get(product=product, user=request.user)
+            serializer = ProductReviewSerializer(review)
+            return Response(serializer.data)
+        except ProductReview.DoesNotExist:
+            return Response(
+                {'error': 'You have not reviewed this product yet'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def start_chat(self, request, pk=None):
         """
         Start a chat about this product with the seller.

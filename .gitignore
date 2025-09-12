@@ -6,3 +6,4 @@ fake-tests
 .env
 test_api.*
 media/*
+tests

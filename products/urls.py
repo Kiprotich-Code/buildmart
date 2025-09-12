@@ -10,6 +10,4 @@ router.register(r'products', ProductViewSet, basename='product')
 urlpatterns = [
     # Include router URLs
     path('', include(router.urls)),
-    
-    # Additional endpoints will be defined here
 ]
