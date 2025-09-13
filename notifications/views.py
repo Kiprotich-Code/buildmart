@@ -30,25 +30,9 @@ class NotificationViewSet(viewsets.ModelViewSet):
     ordering_fields = ['created_at', 'updated_at', 'priority']
     ordering = ['-created_at']
     
-    def create(self, request, *args, **kwargs):
-        """Custom create method with debugging"""
-        print(f"Received notification create request:")
-        print(f"Data: {request.data}")
-        print(f"User: {request.user}")
-        
-        # Call the parent create method
-        return super().create(request, *args, **kwargs)
-    
     def perform_create(self, serializer):
         """Set the created_by_user to current user"""
-        print(f"Creating notification with validated data: {serializer.validated_data}")
-        
-        # Handle anonymous user case for testing
-        if self.request.user.is_authenticated:
-            serializer.save(created_by_user=self.request.user)
-        else:
-            # For testing without authentication, don't set created_by_user
-            serializer.save()
+        serializer.save(created_by_user=self.request.user)
     
     @action(detail=False, methods=['get'])
     def stats(self, request):
@@ -148,15 +132,38 @@ class NotificationViewSet(viewsets.ModelViewSet):
 class UserNotificationViewSet(viewsets.ReadOnlyModelViewSet):
     """User notification viewing viewset"""
     serializer_class = UserNotificationSerializer
-    permission_classes = []  # Temporarily disable auth for testing
+    permission_classes = [permissions.IsAuthenticated]  # Require authentication
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_fields = ['notification_type', 'priority']
     ordering = ['-created_at']
     
     def get_queryset(self):
         """Get notifications for current user based on target audience"""
-        # For testing, return all notifications
-        return Notification.objects.filter(is_active=True)
+        user = self.request.user
+        if not user.is_authenticated:
+            return Notification.objects.none()
+            
+        # Filter notifications based on target audience
+        notifications = Notification.objects.filter(is_active=True)
+        
+        # Build the filter conditions
+        conditions = Q(target_audience='all_users')
+        
+        if hasattr(user, 'role'):
+            if user.role == 'seller':
+                conditions |= Q(target_audience='sellers')
+            elif user.role == 'user':
+                conditions |= Q(target_audience='buyers')
+            elif user.role == 'admin':
+                conditions |= Q(target_audience='admins')
+        
+        # Add specific users condition
+        conditions |= Q(target_audience='specific_users', specific_users=user)
+        
+        user_notifications = notifications.filter(conditions).distinct()
+        print(f"UserNotificationViewSet - Found {user_notifications.count()} notifications for user {user.email}")
+        
+        return user_notifications
     
     @action(detail=False, methods=['post'])
     def mark_as_read(self, request):
