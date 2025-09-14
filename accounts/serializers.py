@@ -14,6 +14,31 @@ from .models import Profile, Seller
 User = get_user_model()
 
 
+class SellerRegistrationSerializer(serializers.ModelSerializer):
+    """Serializer for seller registration"""
+    phone_number = serializers.CharField(max_length=20, required=True)
+    
+    class Meta:
+        model = Seller
+        fields = [
+            'shop_name', 'shop_description', 'phone_number', 'business_license', 
+            'tax_id', 'state', 'city', 'address', 'union_membership_number'
+        ]
+    
+    def validate_phone_number(self, value):
+        """Validate phone number format"""
+        if not value:
+            raise serializers.ValidationError("Phone number is required.")
+        
+        # Remove non-digits to count actual digits
+        clean_phone = ''.join(char for char in value if char.isdigit())
+        
+        if len(clean_phone) < 8:
+            raise serializers.ValidationError("Phone number must contain at least 8 digits.")
+        
+        return value.strip()
+
+
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, validators=[validate_password])
     password_confirm = serializers.CharField(write_only=True)
@@ -83,7 +108,7 @@ class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
         fields = ['id', 'user_email', 'user_role', 'full_name', 'phone', 'address', 
-                 'date_of_birth', 'profile_picture', 'created_at', 'updated_at']
+                 'profile_picture', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at', 'user_email', 'user_role']
 
 
@@ -92,11 +117,24 @@ class SellerSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Seller
-        fields = ['id', 'user_email', 'shop_name', 'shop_description', 
+        fields = ['id', 'user_email', 'shop_name', 'shop_description', 'phone_number',
                  'business_license', 'tax_id', 'state', 'city', 'address', 
                  'union_membership_number', 'verification_status', 'trial_end_date', 
                  'subscription_active', 'subscription_end_date', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at', 'user_email', 'verification_status']
+
+    def validate_phone_number(self, value):
+        """Validate phone number format"""
+        if not value:
+            raise serializers.ValidationError("Phone number is required.")
+        
+        # Remove non-digits to count actual digits
+        clean_phone = ''.join(char for char in value if char.isdigit())
+        
+        if len(clean_phone) < 8:
+            raise serializers.ValidationError("Phone number must contain at least 8 digits.")
+        
+        return value.strip()
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -268,27 +306,27 @@ class GoogleOAuthSerializer(serializers.Serializer):
         """Validate Google access token"""
         import requests
         
-        # Verify token with Google
-        google_user_info_url = f'https://www.googleapis.com/oauth2/v2/userinfo?access_token={access_token}'
-        response = requests.get(google_user_info_url)
-        
-        if response.status_code != 200:
-            raise serializers.ValidationError("Invalid access token.")
+        try:
+            # Verify token with Google
+            google_user_info_url = f'https://www.googleapis.com/oauth2/v2/userinfo?access_token={access_token}'
+            response = requests.get(google_user_info_url, timeout=10)
             
-        user_data = response.json()
-        
-        if 'email' not in user_data:
-            raise serializers.ValidationError("Email not found in Google account.")
+            if response.status_code != 200:
+                raise serializers.ValidationError("Invalid or expired access token.")
+                
+            user_data = response.json()
             
-        return {
-            'access_token': access_token,
-            'user_data': user_data
-        }
+            if 'email' not in user_data:
+                raise serializers.ValidationError("Email not found in Google account.")
+                
+            return user_data
+            
+        except requests.RequestException as e:
+            raise serializers.ValidationError(f"Failed to verify token with Google: {str(e)}")
     
     def create_or_get_user(self, validated_data):
         """Create or get user from Google OAuth data"""
-        google_data = validated_data['access_token']
-        user_data = google_data['user_data']
+        user_data = validated_data['access_token']
         
         email = user_data['email']
         first_name = user_data.get('given_name', '')

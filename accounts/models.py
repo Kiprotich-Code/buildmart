@@ -44,7 +44,6 @@ class Profile(models.Model):
     full_name = models.CharField(max_length=255)
     phone = models.CharField(max_length=20, blank=True, null=True)
     address = models.TextField(blank=True, null=True)
-    date_of_birth = models.DateField(blank=True, null=True)
     profile_picture = models.URLField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -70,6 +69,7 @@ class Seller(models.Model):
     user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name='seller')
     shop_name = models.CharField(max_length=255)
     shop_description = models.TextField(blank=True, null=True)
+    phone_number = models.CharField(max_length=20, default="0")  # Required phone number field with default
     business_license = models.CharField(max_length=100, blank=True, null=True)
     tax_id = models.CharField(max_length=50, blank=True, null=True)
     state = models.CharField(max_length=100)

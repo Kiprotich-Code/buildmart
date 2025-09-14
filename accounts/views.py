@@ -168,24 +168,45 @@ class ProfileDetailView(APIView):
 
     def get(self, request):
         """Get current user's profile"""
+        # Check if user is a seller - sellers don't have profiles
+        if request.user.role == 'seller':
+            return Response({'error': 'Sellers do not have separate profiles. Use seller profile endpoint.'}, 
+                          status=status.HTTP_404_NOT_FOUND)
+        
         try:
             profile = request.user.profile
             serializer = ProfileSerializer(profile)
             return Response(serializer.data)
         except Profile.DoesNotExist:
-            return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+            # Create profile if it doesn't exist
+            profile = Profile.objects.create(
+                user=request.user,
+                full_name=f"{request.user.first_name} {request.user.last_name}".strip() or request.user.email
+            )
+            serializer = ProfileSerializer(profile)
+            return Response(serializer.data)
 
     def put(self, request):
         """Update current user's profile"""
+        # Check if user is a seller - sellers don't have profiles
+        if request.user.role == 'seller':
+            return Response({'error': 'Sellers do not have separate profiles. Use seller profile endpoint.'}, 
+                          status=status.HTTP_404_NOT_FOUND)
+        
         try:
             profile = request.user.profile
-            serializer = ProfileSerializer(profile, data=request.data, partial=True)
-            if serializer.is_valid():
-                serializer.save()
-                return Response(serializer.data)
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except Profile.DoesNotExist:
-            return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+            # Create profile if it doesn't exist
+            profile = Profile.objects.create(
+                user=request.user,
+                full_name=f"{request.user.first_name} {request.user.last_name}".strip() or request.user.email
+            )
+        
+        serializer = ProfileSerializer(profile, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class ChangePasswordView(APIView):
@@ -484,11 +505,15 @@ class GoogleOAuthView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        print(f"Google OAuth request data: {request.data}")  # Debug logging
+        
         serializer = GoogleOAuthSerializer(data=request.data)
         if serializer.is_valid():
             try:
                 user = serializer.create_or_get_user(serializer.validated_data)
                 refresh = RefreshToken.for_user(user)
+                
+                print(f"Google OAuth successful for user: {user.email}")  # Debug logging
                 
                 return Response({
                     'user': UserSerializer(user).data,
@@ -500,10 +525,13 @@ class GoogleOAuthView(APIView):
                 }, status=status.HTTP_200_OK)
                 
             except Exception as e:
+                print(f"Google OAuth error: {str(e)}")  # Debug logging
                 return Response({
                     'error': 'Authentication failed',
                     'details': str(e)
                 }, status=status.HTTP_400_BAD_REQUEST)
+        
+        print(f"Google OAuth serializer errors: {serializer.errors}")  # Debug logging
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -575,6 +603,87 @@ class ProfileListView(APIView):
         except Exception as e:
             return Response({
                 'error': 'Failed to fetch profiles',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class SellerListView(APIView):
+    """Public list of all verified sellers"""
+    permission_classes = [AllowAny]
+    
+    def get(self, request):
+        try:
+            # Only show verified sellers publicly
+            sellers = Seller.objects.filter(verification_status='verified')
+            serializer = SellerSerializer(sellers, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({
+                'error': 'Failed to fetch sellers',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class SellerDetailView(APIView):
+    """Public details of a specific seller"""
+    permission_classes = [AllowAny]
+    
+    def get(self, request, pk):
+        try:
+            seller = Seller.objects.get(id=pk)
+            serializer = SellerSerializer(seller)
+            
+            # Add additional public information
+            data = serializer.data
+            data['owner_name'] = f"{seller.user.first_name} {seller.user.last_name}".strip() or "Shop Owner"
+            data['email'] = seller.user.email
+            data['is_verified'] = seller.verification_status == 'verified'
+            data['date_joined'] = seller.created_at
+            
+            return Response(data, status=status.HTTP_200_OK)
+        except Seller.DoesNotExist:
+            return Response({
+                'error': 'Seller not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'error': 'Failed to fetch seller details',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class SellerVerificationView(APIView):
+    """Admin endpoint to verify sellers"""
+    permission_classes = [IsAdminUser]
+    
+    def post(self, request, pk):
+        try:
+            seller = Seller.objects.get(id=pk)
+            action = request.data.get('action')  # 'verify' or 'reject'
+            
+            if action == 'verify':
+                seller.verification_status = 'verified'
+            elif action == 'reject':
+                seller.verification_status = 'rejected'
+            else:
+                return Response({
+                    'error': 'Invalid action. Use "verify" or "reject"'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            seller.save()
+            
+            return Response({
+                'message': f'Seller {action}d successfully',
+                'status': seller.verification_status
+            }, status=status.HTTP_200_OK)
+            
+        except Seller.DoesNotExist:
+            return Response({
+                'error': 'Seller not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'error': f'Failed to {action} seller',
                 'details': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

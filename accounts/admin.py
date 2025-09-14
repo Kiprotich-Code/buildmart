@@ -32,7 +32,7 @@ class ProfileAdmin(admin.ModelAdmin):
 
 @admin.register(Seller)
 class SellerAdmin(admin.ModelAdmin):
-    list_display = ('shop_name', 'user', 'verification_status', 'state', 'city', 'subscription_active', 'created_at')
+    list_display = ('shop_name', 'user', 'verification_status', 'state', 'city', 'subscription_active', 'created_at', 'phone_number')
     list_filter = ('verification_status', 'subscription_active', 'state', 'created_at')
     search_fields = ('shop_name', 'user__email', 'business_license', 'city')
     readonly_fields = ('id', 'created_at', 'updated_at')
