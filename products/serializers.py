@@ -9,6 +9,7 @@ class SellerDetailSerializer(serializers.Serializer):
     email = serializers.EmailField(read_only=True)
     shop_name = serializers.CharField(read_only=True)
     shop_description = serializers.CharField(read_only=True)
+    phone_number = serializers.CharField(read_only=True)
     verification_status = serializers.CharField(read_only=True)
     is_verified = serializers.BooleanField(read_only=True)
     state = serializers.CharField(read_only=True)
@@ -31,6 +32,7 @@ class SellerDetailSerializer(serializers.Serializer):
                 'email': instance.email,
                 'shop_name': seller.shop_name,
                 'shop_description': seller.shop_description,
+                'phone_number': seller.phone_number,
                 'verification_status': seller.verification_status,
                 'is_verified': seller.is_verified,
                 'state': seller.state,

@@ -145,3 +145,39 @@ class NotificationRead(models.Model):
         
     def __str__(self):
         return f"{self.user.email} read {self.notification.title}"
+
+
+class Contact(models.Model):
+    """Model to store contact form submissions"""
+    CATEGORY_CHOICES = [
+        ('general', 'General Inquiry'),
+        ('technical', 'Technical Support'),
+        ('billing', 'Billing & Payments'),
+        ('seller', 'Seller Support'),
+        ('buyer', 'Buyer Support'),
+        ('dispute', 'Dispute Resolution'),
+        ('partnership', 'Business Partnership'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255)
+    email = models.EmailField()
+    phone = models.CharField(max_length=20, blank=True)
+    subject = models.CharField(max_length=500)
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
+    message = models.TextField()
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    # Email status tracking
+    email_sent = models.BooleanField(default=False)
+    email_sent_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        db_table = 'contacts'
+        ordering = ['-created_at']
+        
+    def __str__(self):
+        return f"Contact from {self.name} - {self.subject}"

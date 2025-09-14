@@ -4,15 +4,18 @@ from rest_framework.response import Response
 from django.contrib.auth import get_user_model
 from django.db.models import Q, Count
 from django.utils import timezone
+from django.core.mail import send_mail
+from django.conf import settings
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
-from .models import Notification, NotificationRead
+from .models import Notification, NotificationRead, Contact
 from .serializers import (
     NotificationSerializer, 
     UserNotificationSerializer, 
     NotificationStatsSerializer,
     MarkAsReadSerializer,
-    NotificationReadSerializer
+    NotificationReadSerializer,
+    ContactSerializer
 )
 from accounts.permissions import IsAdminUser
 
@@ -235,3 +238,69 @@ class UserNotificationViewSet(viewsets.ReadOnlyModelViewSet):
         
         serializer = self.get_serializer(unread_notifications, many=True)
         return Response(serializer.data)
+
+
+class ContactViewSet(viewsets.ModelViewSet):
+    """Contact form submission viewset - No authentication required"""
+    queryset = Contact.objects.all()
+    serializer_class = ContactSerializer
+    permission_classes = [permissions.AllowAny]  # No authentication required
+    http_method_names = ['post']  # Only allow POST requests
+    
+    def perform_create(self, serializer):
+        """Save contact and send email notification"""
+        contact = serializer.save()
+        
+        # Send email notification to admin
+        try:
+            self.send_contact_email(contact)
+            contact.email_sent = True
+            contact.email_sent_at = timezone.now()
+            contact.save()
+        except Exception as e:
+            # Log the error but don't fail the request
+            print(f"Failed to send contact email: {str(e)}")
+        
+        return contact
+    
+    def send_contact_email(self, contact):
+        """Send email notification to admin about new contact form submission"""
+        subject = f"New Contact Form Submission: {contact.subject}"
+        
+        # Format the email message
+        message = f"""
+New contact form submission received:
+
+Name: {contact.name}
+Email: {contact.email}
+Phone: {contact.phone or 'Not provided'}
+Category: {contact.get_category_display()}
+Subject: {contact.subject}
+
+Message:
+{contact.message}
+
+Submitted at: {contact.created_at.strftime('%Y-%m-%d %H:%M:%S')}
+Contact ID: {contact.id}
+        """
+        
+        # Send email to admin
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[settings.DEFAULT_FROM_EMAIL],
+            fail_silently=False,
+        )
+    
+    def create(self, request, *args, **kwargs):
+        """Override create to provide custom response"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        contact = self.perform_create(serializer)
+        
+        return Response({
+            'id': contact.id,
+            'message': 'Your message has been sent successfully! We will get back to you soon.',
+            'success': True
+        }, status=status.HTTP_201_CREATED)

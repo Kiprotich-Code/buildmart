@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Notification, NotificationRead
+from .models import Notification, NotificationRead, Contact
 
 User = get_user_model()
 
@@ -157,3 +157,36 @@ class MarkAsReadSerializer(serializers.Serializer):
         allow_empty=True
     )
     clicked = serializers.BooleanField(default=False, required=False)
+
+
+class ContactSerializer(serializers.ModelSerializer):
+    """Serializer for Contact form submissions"""
+    
+    class Meta:
+        model = Contact
+        fields = ['id', 'name', 'email', 'phone', 'subject', 'category', 'message', 'created_at']
+        read_only_fields = ['id', 'created_at']
+    
+    def validate_email(self, value):
+        """Validate email format"""
+        if not value:
+            raise serializers.ValidationError("Email is required.")
+        return value
+    
+    def validate_name(self, value):
+        """Validate name field"""
+        if not value or len(value.strip()) < 2:
+            raise serializers.ValidationError("Name must be at least 2 characters long.")
+        return value.strip()
+    
+    def validate_subject(self, value):
+        """Validate subject field"""
+        if not value or len(value.strip()) < 5:
+            raise serializers.ValidationError("Subject must be at least 5 characters long.")
+        return value.strip()
+    
+    def validate_message(self, value):
+        """Validate message field"""
+        if not value or len(value.strip()) < 10:
+            raise serializers.ValidationError("Message must be at least 10 characters long.")
+        return value.strip()

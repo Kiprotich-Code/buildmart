@@ -17,3 +17,4 @@ typing-extensions==4.13.2
 django-allauth==0.62.1
 python-dotenv==1.0.1
 dj-rest-auth==5.1.0
+requests==2.31.0

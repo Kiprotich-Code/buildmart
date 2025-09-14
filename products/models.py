@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth import get_user_model
 import uuid
 from django.core.validators import MinValueValidator
+from decimal import Decimal
 from .utils import generate_image_filename, delete_image_file
 
 User = get_user_model()
@@ -31,7 +32,7 @@ class Product(models.Model):
     category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='products')
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True, null=True)
-    price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
+    price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(Decimal('0'))])
     quantity = models.IntegerField(default=0, validators=[MinValueValidator(0)])
     # Legacy field - kept for backward compatibility but deprecated
     legacy_images = models.JSONField(default=list, blank=True, help_text="Deprecated - use ProductImage model")
@@ -177,7 +178,7 @@ class Boost(models.Model):
     seller = models.ForeignKey(User, on_delete=models.CASCADE, related_name='boosts')
     reach_type = models.CharField(max_length=20, choices=REACH_CHOICES)
     duration_days = models.IntegerField(validators=[MinValueValidator(1)])
-    cost = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
+    cost = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(Decimal('0'))])
     starts_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
     is_paid = models.BooleanField(default=False)

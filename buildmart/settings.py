@@ -259,12 +259,6 @@ SIMPLE_JWT = {
 
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:8080",
-    "http://localhost:8081",
-    "http://127.0.0.1:8080",
-    "http://127.0.0.1:8081",
-]
 
 # Channels (WebSocket) Configuration
 ASGI_APPLICATION = 'buildmart.asgi.application'
@@ -279,6 +273,15 @@ CHANNEL_LAYERS = {
 }
 
 FRONTEND_URL = 'http://localhost:8080'
+
+# Email Configuration
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # For development
+DEFAULT_FROM_EMAIL = 'support@buildmart.ng'
+EMAIL_HOST = 'localhost'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = ''
+EMAIL_HOST_PASSWORD = ''
 
 # For development without Redis, use in-memory channel layer
 # CHANNEL_LAYERS = {
