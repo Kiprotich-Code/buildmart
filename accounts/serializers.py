@@ -235,7 +235,7 @@ class PasswordResetSerializer(serializers.Serializer):
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         
         # Create reset link (you can customize this URL based on your frontend)
-        reset_link = f"http://localhost:3000/reset-password/{uid}/{token}/"
+        reset_link = f"http://localhost:8080/reset-password/{uid}/{token}/"
         
         # Send email
         subject = 'Password Reset - BuildMart'
