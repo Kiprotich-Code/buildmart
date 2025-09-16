@@ -25,7 +25,7 @@ class NotificationSerializer(serializers.ModelSerializer):
     """Main notification serializer for admin operations"""
     specific_users = UserBasicSerializer(many=True, read_only=True)
     specific_user_ids = serializers.ListField(
-        child=serializers.UUIDField(),
+        child=serializers.IntegerField(),
         write_only=True,
         required=False,
         allow_empty=True

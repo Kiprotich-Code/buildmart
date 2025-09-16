@@ -34,8 +34,13 @@ class NotificationViewSet(viewsets.ModelViewSet):
     ordering = ['-created_at']
     
     def perform_create(self, serializer):
-        """Set the created_by_user to current user"""
-        serializer.save(created_by_user=self.request.user)
+        """Set the created_by_user to current user or default admin"""
+        if self.request.user.is_authenticated:
+            created_by_user = self.request.user
+        else:
+           print('Error, user should be logged in!')
+        
+        serializer.save(created_by_user=created_by_user)
     
     @action(detail=False, methods=['get'])
     def stats(self, request):

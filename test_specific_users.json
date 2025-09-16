@@ -1,0 +1,16 @@
+{
+  "title": "Test Notification - Specific Users",
+  "notification_type": "announcement",
+  "priority": "high",
+  "target_audience": "specific_users",
+  "specific_user_ids": [1, 2, 3, 4, 5],
+  "message": "This is a test notification for specific users after applying the fixes",
+  "action_buttons": [
+    {
+      "text": "View Details",
+      "url": "/dashboard"
+    }
+  ],
+  "created_by": "admin",
+  "is_active": true
+}

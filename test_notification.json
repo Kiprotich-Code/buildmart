@@ -1,0 +1,11 @@
+{
+  "title": "Test Notification for Specific Users",
+  "notification_type": "announcement",
+  "priority": "medium",
+  "target_audience": "specific_users",
+  "specific_user_ids": [1, 2, 3],
+  "message": "This is a test notification for specific users",
+  "action_buttons": [],
+  "created_by": "admin",
+  "is_active": true
+}
