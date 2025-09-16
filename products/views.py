@@ -251,6 +251,111 @@ class ProductViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
     
+    def update(self, request, *args, **kwargs):
+        """
+        Update a product, handling both regular data and image uploads.
+        """
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        
+        # Handle FormData with images
+        if 'images' in request.data and hasattr(request.data, 'getlist'):
+            return self._update_product_with_images(request, instance, partial=partial)
+        
+        # Standard update for JSON data
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        
+        if getattr(instance, '_prefetched_objects_cache', None):
+            instance._prefetched_objects_cache = {}
+        
+        return Response(serializer.data)
+    
+    def partial_update(self, request, *args, **kwargs):
+        """
+        Partially update a product.
+        """
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+    
+    def _update_product_with_images(self, request, instance, partial=False):
+        """
+        Handle product update with image uploads (FormData).
+        """
+        from django.db import transaction
+        from .utils import process_uploaded_images
+        
+        try:
+            with transaction.atomic():
+                # Extract form data
+                data = {}
+                for key in ['name', 'description', 'price', 'quantity', 'category_id']:
+                    if key in request.data:
+                        data[key] = request.data[key]
+                
+                # Handle category field mapping
+                if 'category_id' in data:
+                    data['category'] = data.pop('category_id')
+                
+                # Get new images and existing images to keep
+                new_images = request.FILES.getlist('images') if 'images' in request.FILES else []
+                existing_images = request.data.getlist('existing_images') if hasattr(request.data, 'getlist') else []
+                
+                # Update basic product data
+                serializer = ProductSerializer(instance, data=data, partial=partial)
+                serializer.is_valid(raise_exception=True)
+                product = serializer.save()
+                
+                # Handle images if any image data is provided
+                if new_images or 'existing_images' in request.data:
+                    current_images = list(product.product_images.all())
+                    
+                    # Determine which existing images to keep (by matching URLs)
+                    images_to_keep = []
+                    if existing_images:
+                        for current_img in current_images:
+                            img_url = current_img.image.url if current_img.image else ''
+                            if img_url in existing_images:
+                                images_to_keep.append(current_img)
+                    
+                    # Remove images that are not in the keep list
+                    for current_img in current_images:
+                        if current_img not in images_to_keep:
+                            current_img.delete()
+                    
+                    # Update order for kept images and alt texts
+                    for idx, img in enumerate(images_to_keep):
+                        img.order = idx
+                        alt_text_key = f'existing_alt_text_{existing_images.index(img.image.url)}'
+                        if alt_text_key in request.data:
+                            img.alt_text = request.data[alt_text_key]
+                        img.save()
+                    
+                    # Add new images
+                    if new_images:
+                        start_order = len(images_to_keep)
+                        created_images = process_uploaded_images(new_images, product)
+                        
+                        # Update order for new images and set alt texts
+                        for i, image_obj in enumerate(created_images):
+                            image_obj.order = start_order + i
+                            alt_text_key = f'alt_text_{i}'
+                            alt_text = request.data.get(alt_text_key, '')
+                            if alt_text:
+                                image_obj.alt_text = alt_text
+                            image_obj.save()
+                
+                # Return updated product data
+                updated_serializer = ProductSerializer(product)
+                return Response(updated_serializer.data)
+                
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to update product: {str(e)}'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
     @action(detail=False, methods=['get'])
     def featured(self, request):
         """
