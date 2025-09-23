@@ -13,5 +13,5 @@ router.register(r'dispute-messages', DisputeMessageViewSet, basename='dispute-me
 app_name = 'reports'
 
 urlpatterns = [
-    path('api/', include(router.urls)),
+    path('', include(router.urls)),
 ]
