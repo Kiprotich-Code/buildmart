@@ -329,3 +329,281 @@ class UserConsumer(AsyncWebsocketConsumer):
             chat__in=Chat.objects.filter(Q(buyer=self.user) | Q(seller=self.user)),
             is_read=False
         ).exclude(sender=self.user).count()
+
+
+class DisputeConsumer(AsyncWebsocketConsumer):
+    """
+    WebSocket consumer for dispute rooms
+    Handles real-time messaging and status updates in disputes
+    """
+    
+    async def connect(self):
+        self.dispute_id = self.scope['url_route']['kwargs']['dispute_id']
+        self.dispute_group_name = f'dispute_{self.dispute_id}'
+        self.user = self.scope['user']
+        
+        # Check if user is authenticated
+        if not self.user.is_authenticated:
+            await self.close()
+            return
+        
+        # Check if user is a participant in this dispute
+        is_participant = await self.check_dispute_participant()
+        if not is_participant:
+            await self.close()
+            return
+        
+        # Join dispute group
+        await self.channel_layer.group_add(
+            self.dispute_group_name,
+            self.channel_name
+        )
+        
+        await self.accept()
+        
+        # Send connection confirmation
+        await self.send(text_data=json.dumps({
+            'type': 'connection_established',
+            'message': f'Connected to dispute {self.dispute_id}'
+        }))
+    
+    async def disconnect(self, close_code):
+        # Leave dispute group
+        if hasattr(self, 'dispute_group_name'):
+            await self.channel_layer.group_discard(
+                self.dispute_group_name,
+                self.channel_name
+            )
+    
+    async def receive(self, text_data):
+        try:
+            text_data_json = json.loads(text_data)
+            message_type = text_data_json.get('type')
+            
+            if message_type == 'send_message':
+                await self.handle_send_message(text_data_json)
+            elif message_type == 'mark_resolved':
+                await self.handle_mark_resolved(text_data_json)
+            elif message_type == 'typing_status':
+                await self.handle_typing_status(text_data_json)
+            elif message_type == 'mark_messages_read':
+                await self.handle_mark_messages_read()
+                
+        except json.JSONDecodeError:
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': 'Invalid JSON data'
+            }))
+    
+    async def handle_send_message(self, data):
+        """Handle sending a message in the dispute"""
+        content = data.get('content', '').strip()
+        message_type = data.get('message_type', 'text')
+        attachments = data.get('attachments', [])
+        
+        if not content and message_type == 'text':
+            return
+        
+        # Check if dispute is resolved
+        dispute = await self.get_dispute()
+        if dispute.is_resolved:
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': 'Cannot send messages to resolved disputes'
+            }))
+            return
+        
+        # Create message
+        message = await self.create_dispute_message(content, message_type, attachments)
+        
+        if message:
+            # Serialize message
+            message_data = await self.serialize_dispute_message(message)
+            
+            # Send to dispute group
+            await self.channel_layer.group_send(
+                self.dispute_group_name,
+                {
+                    'type': 'dispute_message',
+                    'message': message_data
+                }
+            )
+    
+    async def handle_mark_resolved(self, data):
+        """Handle marking dispute as resolved"""
+        # Get current dispute
+        dispute = await self.get_dispute()
+        
+        if dispute.is_resolved:
+            return
+        
+        # Mark user's resolution status
+        await self.mark_user_resolved(dispute)
+        
+        # Check if both parties agreed
+        dispute = await self.get_dispute()  # Refresh
+        if await self.can_be_resolved_mutually(dispute):
+            await self.resolve_dispute_mutually(dispute, data.get('resolution_description', ''))
+        
+        # Notify group about resolution status change
+        await self.channel_layer.group_send(
+            self.dispute_group_name,
+            {
+                'type': 'dispute_status_update',
+                'status': 'resolved' if dispute.is_resolved else 'pending_resolution',
+                'dispute_data': await self.serialize_dispute(dispute)
+            }
+        )
+    
+    async def handle_typing_status(self, data):
+        """Handle typing status notifications"""
+        is_typing = data.get('is_typing', False)
+        user_name = await self.get_user_name(self.user)
+        
+        await self.channel_layer.group_send(
+            self.dispute_group_name,
+            {
+                'type': 'typing_status',
+                'user_id': str(self.user.id),
+                'user_name': user_name,
+                'is_typing': is_typing
+            }
+        )
+    
+    async def handle_mark_messages_read(self):
+        """Handle marking messages as read"""
+        await self.mark_messages_read()
+        
+        # Notify group about read status change
+        await self.channel_layer.group_send(
+            self.dispute_group_name,
+            {
+                'type': 'messages_read',
+                'user_id': str(self.user.id)
+            }
+        )
+    
+    # WebSocket message handlers
+    async def dispute_message(self, event):
+        """Handle new dispute message"""
+        await self.send(text_data=json.dumps({
+            'type': 'new_message',
+            'message': event['message']
+        }))
+    
+    async def dispute_status_update(self, event):
+        """Handle dispute status updates"""
+        await self.send(text_data=json.dumps({
+            'type': 'status_update',
+            'status': event['status'],
+            'dispute': event['dispute_data']
+        }))
+    
+    async def admin_joined(self, event):
+        """Handle admin joining dispute"""
+        await self.send(text_data=json.dumps({
+            'type': 'admin_joined',
+            'admin_name': event['admin_name'],
+            'message': event['message']
+        }))
+    
+    async def typing_status(self, event):
+        """Handle typing status updates"""
+        # Don't send typing status to the sender
+        if event['user_id'] != str(self.user.id):
+            await self.send(text_data=json.dumps({
+                'type': 'typing_status',
+                'user_name': event['user_name'],
+                'is_typing': event['is_typing']
+            }))
+    
+    async def messages_read(self, event):
+        """Handle messages read status"""
+        await self.send(text_data=json.dumps({
+            'type': 'messages_read',
+            'user_id': event['user_id']
+        }))
+    
+    # Database operations
+    @database_sync_to_async
+    def check_dispute_participant(self):
+        """Check if user is a participant in the dispute"""
+        from reports.models import Dispute
+        try:
+            dispute = Dispute.objects.get(id=self.dispute_id)
+            return self.user in dispute.participants or self.user.is_admin
+        except Dispute.DoesNotExist:
+            return False
+    
+    @database_sync_to_async
+    def get_dispute(self):
+        """Get the dispute object"""
+        from reports.models import Dispute
+        return Dispute.objects.select_related('buyer', 'seller', 'admin_user', 'product').get(id=self.dispute_id)
+    
+    @database_sync_to_async
+    def create_dispute_message(self, content, message_type, attachments):
+        """Create a new dispute message"""
+        from reports.models import DisputeMessage
+        dispute = self.get_dispute()
+        
+        if dispute.is_resolved:
+            return None
+        
+        message = DisputeMessage.objects.create(
+            dispute=dispute,
+            sender=self.user,
+            content=content,
+            message_type=message_type,
+            attachments=attachments
+        )
+        return message
+    
+    @database_sync_to_async
+    def serialize_dispute_message(self, message):
+        """Serialize dispute message for WebSocket"""
+        from reports.serializers import DisputeMessageSerializer
+        serializer = DisputeMessageSerializer(message)
+        return serializer.data
+    
+    @database_sync_to_async
+    def serialize_dispute(self, dispute):
+        """Serialize dispute for WebSocket"""
+        from reports.serializers import DisputeDetailSerializer
+        serializer = DisputeDetailSerializer(dispute)
+        return serializer.data
+    
+    @database_sync_to_async
+    def mark_user_resolved(self, dispute):
+        """Mark dispute as resolved by current user"""
+        if self.user == dispute.buyer:
+            dispute.buyer_marked_resolved = True
+        elif self.user == dispute.seller:
+            dispute.seller_marked_resolved = True
+        dispute.save()
+    
+    @database_sync_to_async
+    def can_be_resolved_mutually(self, dispute):
+        """Check if dispute can be resolved mutually"""
+        return dispute.can_be_resolved_mutually
+    
+    @database_sync_to_async
+    def resolve_dispute_mutually(self, dispute, resolution_description):
+        """Resolve dispute by mutual agreement"""
+        dispute.resolution_description = resolution_description
+        dispute.mark_resolved_mutually()
+    
+    @database_sync_to_async
+    def mark_messages_read(self):
+        """Mark all messages as read for current user"""
+        from reports.models import DisputeMessage
+        dispute = self.get_dispute()
+        for message in dispute.messages.all():
+            message.mark_read_by_user(self.user)
+    
+    @database_sync_to_async
+    def get_user_name(self, user):
+        """Get user display name"""
+        if hasattr(user, 'profile') and user.profile.full_name:
+            return user.profile.full_name
+        return user.username or user.email
