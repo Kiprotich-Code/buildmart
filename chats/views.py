@@ -31,6 +31,48 @@ class ChatViewSet(viewsets.ModelViewSet):
     serializer_class = ChatSerializer
     permission_classes = [permissions.IsAuthenticated]
     
+    @action(detail=True, methods=['post'])
+    def escalate_to_dispute(self, request, pk=None):
+        """
+        Escalate a chat to a dispute by creating a report
+        """
+        chat = self.get_object()
+        
+        # Check if user is part of the chat
+        if request.user != chat.buyer and request.user != chat.seller:
+            return Response(
+                {"detail": "You don't have permission to escalate this chat."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            from reports.models import Report
+            from django.contrib.contenttypes.models import ContentType
+            
+            # Create a report for the chat
+            report = Report.objects.create(
+                type='message',  # or consider adding a 'dispute' type
+                content_type=ContentType.objects.get_for_model(chat),
+                object_id=str(chat.id),
+                reporter=request.user,
+                reported_user=chat.seller if request.user == chat.buyer else chat.buyer,
+                reason='other',  # You might want to add specific dispute reasons
+                description=f"Dispute escalated from chat {chat.id}",
+                priority='high',
+                status='investigating'
+            )
+            
+            return Response({
+                "detail": "Chat escalated to dispute successfully.",
+                "dispute_id": report.id
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
     def get_queryset(self):
         """Get chats for the current user"""
         user = self.request.user
@@ -146,6 +188,69 @@ class ChatViewSet(viewsets.ModelViewSet):
         return Response({
             'unread_count': unread_count
         })
+
+    @action(detail=True, methods=['post'])
+    def escalate_to_dispute(self, request, pk=None):
+        """Escalate this chat to a dispute"""
+        chat = self.get_object()
+        
+        # Verify user is participant in this chat
+        if request.user not in [chat.buyer, chat.seller]:
+            return Response(
+                {'error': 'You are not a participant in this chat'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Check if dispute already exists for this chat
+        from reports.models import Dispute
+        existing_dispute = Dispute.objects.filter(escalated_from_chat=chat).first()
+        if existing_dispute:
+            return Response({
+                'error': 'A dispute already exists for this chat',
+                'dispute_id': str(existing_dispute.id)
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get dispute title and description from request
+        title = request.data.get('title', f'Dispute regarding {chat.product.name if chat.product else "conversation"}')
+        description = request.data.get('description', 'Chat escalated to dispute')
+        
+        # Create dispute
+        dispute = Dispute.objects.create(
+            buyer=chat.buyer,
+            seller=chat.seller,
+            product=chat.product,
+            title=title,
+            description=description,
+            escalated_from_chat=chat
+        )
+        
+        # Create initial system message in dispute
+        from reports.models import DisputeMessage
+        DisputeMessage.objects.create(
+            dispute=dispute,
+            sender=request.user,
+            message_type='system',
+            content=f'Chat escalated to dispute by {self._get_user_name(request.user)}'
+        )
+        
+        # Mark chat as flagged for admin attention
+        chat.is_flagged = True
+        chat.flag_reason = f'Escalated to dispute by {self._get_user_name(request.user)}'
+        chat.save()
+        
+        from reports.serializers import DisputeDetailSerializer
+        dispute_serializer = DisputeDetailSerializer(dispute, context={'request': request})
+        
+        return Response({
+            'message': 'Chat successfully escalated to dispute',
+            'dispute': dispute_serializer.data
+        }, status=status.HTTP_201_CREATED)
+
+    def _get_user_name(self, user):
+        """Helper method to get user display name"""
+        if hasattr(user, 'profile') and user.profile.full_name:
+            return user.profile.full_name
+        return user.username or user.email
 
     # ADMIN CHAT MONITORING ENDPOINTS
     
