@@ -24,9 +24,15 @@ class IsAdminOrReadOnly(permissions.BasePermission):
     Regular users can create reports but only view their own.
     """
     def has_permission(self, request, view):
+        # Allow authenticated users to create reports
+        if request.method == 'POST':
+            return request.user.is_authenticated
+        # Allow authenticated users to view (GET) reports
         if request.method in permissions.SAFE_METHODS:
             return request.user.is_authenticated
-        return request.user.is_authenticated
+        # For other methods (PUT, PATCH, DELETE), require admin
+        return bool(request.user and request.user.is_authenticated and 
+                   hasattr(request.user, 'is_admin') and request.user.is_admin)
 
     def has_object_permission(self, request, view, obj):
         # Admin can do anything

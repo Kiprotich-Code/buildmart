@@ -607,7 +607,7 @@ class ProfileListView(APIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-class SellerListView(APIView):
+class VerifiedSellerListView(APIView):
     """Public list of all verified sellers"""
     permission_classes = [AllowAny]
     

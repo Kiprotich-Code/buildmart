@@ -36,6 +36,7 @@ urlpatterns = [
     path('seller/register/', views.SellerRegistrationView.as_view(), name='seller-register'),
     path('seller/profile/', views.CurrentSellerView.as_view(), name='current-seller'),
     path('sellers/', views.SellerListView.as_view(), name='seller-list'),
+    path('sellers/verified/', views.VerifiedSellerListView.as_view(), name='verified-sellers'),
     path('sellers/<uuid:pk>/', views.SellerDetailView.as_view(), name='seller-detail'),
     path('sellers/<uuid:pk>/verify/', views.SellerVerificationView.as_view(), name='seller-verify'),
     
